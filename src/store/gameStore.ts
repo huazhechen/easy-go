@@ -3257,7 +3257,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
 	  makeAiMove: (opts) => {
 	      const force = opts?.force ?? false;
 	      const state = get();
-	      if (state.isAiThinking) return;
 	      // `force` lets the on-demand "AI move" buttons play one engine move for
 	      // the side to move even outside an AI game or on the human's turn.
 	      if (!force) {
@@ -3307,7 +3306,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         timedOut = true;
         set({ isAiThinking: false });
         const latest = get();
-        if (latest.currentNode.id !== nodeId || latest.currentPlayer !== playerAtStart) return;
+        if (latest.currentPlayer !== playerAtStart) return;
         const top = latest.currentNode.analysis?.moves?.[0] ?? latest.analysisData?.moves?.[0];
         if (top && top.x >= 0 && top.y >= 0 && isValidMove(latest.board, top.x, top.y, playerAtStart, parentBoard)) {
           latest.playMove(top.x, top.y);
