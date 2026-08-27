@@ -2029,7 +2029,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
             maxChildren: s.settings.katagoMaxChildren,
             reuseTree: false,
             ownershipMode: 'none',
-            analysisGroup: 'background',
+            // AI moves share the interactive channel so a timed-out search can
+            // be superseded immediately by the next recommendation request.
+            analysisGroup: 'interactive',
             }),
           });
 
