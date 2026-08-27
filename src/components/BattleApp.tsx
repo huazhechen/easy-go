@@ -88,6 +88,9 @@ export function BattleApp() {
   const didInitialize = useRef(false);
   const boardSize = board.length;
   const topMoves = useMemo(() => (analysisData?.moves ?? []).slice(0, 3), [analysisData]);
+  const hintRates = topMoves.map((move) => move.winRate);
+  const minHintRate = hintRates.length ? Math.min(...hintRates) : 0;
+  const maxHintRate = hintRates.length ? Math.max(...hintRates) : 1;
   const selfPlay = thinking === '自弈';
   const hintsVisible = showHints && (selfPlay || currentPlayer === (aiColor === 'black' ? 'white' : 'black'));
 
@@ -229,11 +232,14 @@ export function BattleApp() {
             const y = Math.floor(index / boardSize);
             const stone = board[y]?.[x];
             const hint = hintsVisible ? hintAt(x, y) : undefined;
+            const hintAlpha = hint
+              ? 0.35 + (maxHintRate === minHintRate ? 0.6 : ((hint.winRate - minHintRate) / (maxHintRate - minHintRate)) * 0.6)
+              : 0;
             const territoryValue = analysisData?.territory?.[y]?.[x];
             const territoryOwner = typeof territoryValue === 'number' ? territoryValue >= 0 ? 'black' : 'white' : null;
             const pointStyle = { left: `${pointInset + (x / (boardSize - 1)) * (100 - pointInset * 2)}%`, top: `${pointInset + (y / (boardSize - 1)) * (100 - pointInset * 2)}%` };
             return <button key={`${x}-${y}`} style={pointStyle} className={`intersection ${hoshi.has(`${x}-${y}`) ? 'hoshi' : ''}`} onClick={() => handlePoint(x, y)} aria-label={`${x + 1},${y + 1}`}>
-              {hint && !stone && <span className={`hint-dot rank-${hint.order}`} style={{ fontSize: `${hintFontSize}px` }}>{percent(hint.winRate)}</span>}
+              {hint && !stone && <span className={`hint-dot rank-${topMoves.findIndex((move) => move === hint)}`} style={{ fontSize: `${hintFontSize}px`, backgroundColor: `rgba(211,47,47,${hintAlpha.toFixed(3)})` }}>{percent(hint.winRate)}</span>}
               {stone && <span className={`board-stone ${stone === 'black' ? 'black-stone' : 'white-stone'}`} />}
               {currentNode.move?.x === x && currentNode.move?.y === y && <span className="last-move-marker" />}
               {showScore && !stone && territoryOwner && <span className={`score-mark ${territoryOwner}`} />}
