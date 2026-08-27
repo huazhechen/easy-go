@@ -3305,6 +3305,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const finishFromCurrentKataGo = () => {
         if (timedOut) return;
         timedOut = true;
+        set({ isAiThinking: false });
         const latest = get();
         if (latest.currentNode.id !== nodeId || latest.currentPlayer !== playerAtStart) return;
         const top = latest.currentNode.analysis?.moves?.[0] ?? latest.analysisData?.moves?.[0];
