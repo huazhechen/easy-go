@@ -3300,6 +3300,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
       // The canceled branch below reschedules itself; keep the indicator lit
       // across that hand-off instead of flickering off for 100ms.
       let retryScheduled = false;
+      let timedOut = false;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      const finishFromCurrentKataGo = () => {
+        if (timedOut) return;
+        timedOut = true;
+        const latest = get();
+        if (latest.currentNode.id !== nodeId || latest.currentPlayer !== playerAtStart) return;
+        const top = latest.currentNode.analysis?.moves?.[0] ?? latest.analysisData?.moves?.[0];
+        if (top && top.x >= 0 && top.y >= 0 && isValidMove(latest.board, top.x, top.y, playerAtStart, parentBoard)) {
+          latest.playMove(top.x, top.y);
+        } else if (top && (top.x < 0 || top.y < 0)) {
+          latest.passTurn();
+        } else {
+          makeHeuristicMove(latest);
+        }
+        analysisQueue.cancelGroup('ai-move', 'AI move hard timeout');
+      };
+      timeoutId = setTimeout(finishFromCurrentKataGo, maxTimeMs);
 
       void analysisQueue
         .enqueue<KataGoAnalysisPayload>({
@@ -3367,6 +3385,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           }),
         })
         .then((analysis) => {
+          if (timedOut) return;
           const engineInfo = getKataGoEngineClient().getEngineInfo();
           set({ engineBackend: engineInfo.backend, engineModelName: engineInfo.modelName });
 
@@ -4021,6 +4040,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           set((s) => ({ treeVersion: s.treeVersion + 1 }));
         })
         .catch((err) => {
+          if (timedOut) return;
           if (isAnalysisCanceled(err)) {
             const latest = get();
             if (latest.currentNode.id !== nodeId) return;
@@ -4033,6 +4053,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           makeHeuristicMove(get());
         })
         .finally(() => {
+          if (timeoutId) clearTimeout(timeoutId);
           if (!retryScheduled) set({ isAiThinking: false });
         });
   },
