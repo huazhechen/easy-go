@@ -2029,9 +2029,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             maxChildren: s.settings.katagoMaxChildren,
             reuseTree: false,
             ownershipMode: 'none',
-            // AI moves share the interactive channel so a timed-out search can
-            // be superseded immediately by the next recommendation request.
-            analysisGroup: 'interactive',
+            analysisGroup: 'background',
             }),
           });
 
@@ -3383,7 +3381,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
           maxChildren,
           reuseTree: state.settings.katagoReuseTree,
           ownershipMode: aiOwnershipMode,
-          analysisGroup: 'background',
+          // AI moves share the interactive channel so a timed-out search can
+          // be superseded immediately by the next recommendation request.
+          analysisGroup: 'interactive',
           }),
         })
         .then((analysis) => {
