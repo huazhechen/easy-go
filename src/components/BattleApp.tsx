@@ -162,12 +162,6 @@ export function BattleApp() {
   const handlePoint = (x: number, y: number) => {
     if ((!selfPlay && currentPlayer === aiColor) || isAiThinking || board[y]?.[x]) return;
     playMove(x, y);
-    if (thinking !== '自弈') {
-      window.setTimeout(() => {
-        const state = useGameStore.getState();
-        if (state.isAiPlaying && state.aiColor === state.currentPlayer && !state.isAiThinking) state.makeAiMove();
-      }, 120);
-    }
   };
   const manualAiTurn = thinking === '自弈' && currentPlayer === aiColor;
   const handlePass = () => {
@@ -197,7 +191,7 @@ export function BattleApp() {
   const blackPoints = territoryValues.length ? territoryValues.filter((value) => value >= 0).length + capturedWhite : 0;
   const whitePoints = territoryValues.length ? territoryValues.filter((value) => value < 0).length + capturedBlack + 6.5 : 6.5;
   const pointInset = 42 / boardSize;
-  const hintFontSize = typeof window === 'undefined' ? 16 : Math.max(11, Math.min(24, (Math.min(window.innerWidth, 560) * 0.9 / boardSize) * 0.52));
+  const hintFontSize = typeof window === 'undefined' ? 13 : Math.max(9, Math.min(19, (Math.min(window.innerWidth, 560) * 0.9 / boardSize) * 0.42));
   const undoTwoMoves = () => {
     if (!moveHistory.length) return;
     undoMove();

@@ -3257,6 +3257,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 	  makeAiMove: (opts) => {
 	      const force = opts?.force ?? false;
 	      const state = get();
+	      if (state.isAiThinking) return;
 	      // `force` lets the on-demand "AI move" buttons play one engine move for
 	      // the side to move even outside an AI game or on the human's turn.
 	      if (!force) {
