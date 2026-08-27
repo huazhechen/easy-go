@@ -1,0 +1,6169 @@
+@import 'tailwindcss';
+
+/* Focused mobile battle surface. */
+.battle-shell { min-height: 100dvh; background: #f5f7f4; color: #1e2b26; padding: 24px 16px 28px; font-family: Inter, ui-sans-serif, system-ui, sans-serif; max-width: 620px; margin: 0 auto; }
+.battle-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px; }
+.eyebrow { margin:0 0 5px; color:#7b8c84; font-size:10px; font-weight:800; letter-spacing:.15em; }
+.battle-header h1 { margin:0; font-size:28px; letter-spacing:-.03em; }
+.engine-pill { display:flex; align-items:center; gap:7px; font-size:12px; color:#65776e; background:#fff; border:1px solid #e1e8e3; border-radius:99px; padding:8px 11px; }
+.status-dot { width:7px; height:7px; border-radius:50%; background:#f0ae3d; }.status-dot.ready { background:#36ad72; }.status-dot.error { background:#d76363; }
+.match-card { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:8px; background:#fff; border:1px solid #e4ebe6; border-radius:18px; padding:13px 14px; box-shadow:0 7px 20px #24372d0b; }
+.player { display:flex; align-items:center; gap:9px; min-width:0; }.player > div { display:flex; flex-direction:column; min-width:0; }.player strong { font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }.player small { color:#87958e; font-size:10px; margin-top:2px; }.white-player { justify-content:flex-end; text-align:right; }.vs-mark { font-size:10px; color:#aab6b0; font-weight:800; }
+.stone-avatar,.board-stone { display:block; border-radius:50%; }.stone-avatar { width:27px; height:27px; flex:none; }.black-stone { background:radial-gradient(circle at 32% 28%,#59635f,#111715 62%,#070b09); box-shadow:inset -2px -3px 4px #0008, 0 2px 4px #0003; }.white-stone { background:radial-gradient(circle at 30% 25%,#fff,#e3e9e4 70%,#c5d0c8); box-shadow:inset -2px -2px 4px #aab7af66, 0 2px 4px #0002; }
+.turn-mark { opacity:0; color:#3e9d70; font-size:10px; font-weight:700; margin-left:auto; }.white-player .turn-mark { margin-left:0; margin-right:auto; }.turn-mark.active { opacity:1; }
+.board-wrap { position:relative; margin:20px auto 17px; width:min(100%, 560px); aspect-ratio:1; padding:12px; background:#d9a463; border-radius:10px; box-shadow:0 12px 30px #74502d25, inset 0 0 0 1px #b4824c; }
+.board-grid { width:100%; height:100%; position:relative; background:#e9bd7f; border:1px solid #8c6036; box-sizing:border-box; overflow:visible; }
+.board-line { position:absolute; display:block; background:#9b6c3f99; pointer-events:none; z-index:0; }.board-line.horizontal { left:5%; width:90%; height:1px; transform:translateY(-50%); }.board-line.vertical { top:5%; height:90%; width:1px; transform:translateX(-50%); }
+.intersection { position:absolute; width:calc(90% / var(--board-size)); height:calc(90% / var(--board-size)); transform:translate(-50%,-50%); border:0; padding:0; background:transparent; display:grid; place-items:center; cursor:pointer; z-index:1; }.intersection.hoshi::before { content:""; width:24%; aspect-ratio:1; background:#80562e; border-radius:50%; position:absolute; }.board-stone { width:84%; aspect-ratio:1; position:relative; z-index:2; }.hint-dot { width:62%; aspect-ratio:1; border-radius:50%; display:grid; place-items:center; color:#fff; font-size:clamp(8px,2.5vw,13px); font-weight:800; position:relative; z-index:1; background:#4baf7cdd; box-shadow:0 0 0 2px #ffffff99; }.hint-dot.rank-0 { background:#e28745; transform:scale(1.12); }.hint-dot.rank-1 { background:#5da9bf; }.hint-dot.rank-2 { background:#7f9b91; }
+.coach-panel { background:#fff; border:1px solid #e4ebe6; border-radius:18px; padding:15px; box-shadow:0 7px 20px #24372d0b; }.coach-heading { display:flex; justify-content:space-between; align-items:center; }.coach-heading > div { display:flex; align-items:center; gap:10px; }.coach-heading strong { display:block; font-size:14px; }.coach-heading small { display:block; color:#89968f; font-size:11px; margin-top:2px; }.coach-icon { display:grid; place-items:center; width:32px; height:32px; border-radius:10px; color:#e28745; background:#fff1e6; }.toggle { width:36px; height:22px; padding:3px; border:0; border-radius:20px; background:#ccd5cf; }.toggle span { display:block; width:16px; height:16px; border-radius:50%; background:#fff; transition:transform .2s; }.toggle.on { background:#4baf7c; }.toggle.on span { transform:translateX(14px); }
+.recommendations { margin:14px 0 12px; display:grid; gap:7px; }.recommendation { display:grid; grid-template-columns:22px 42px 1fr 43px; align-items:center; gap:8px; padding:7px 8px; border:1px solid #edf1ee; border-radius:9px; color:#304039; background:#fbfcfb; text-align:left; }.recommend-rank { display:grid; place-items:center; width:20px; height:20px; border-radius:50%; color:#fff; background:#8ba69a; font-size:10px; font-weight:800; }.recommendation.rank-0 .recommend-rank { background:#e28745; }.recommend-coord { font-size:12px; font-weight:700; }.recommend-bar { height:5px; border-radius:10px; background:#e6ede8; overflow:hidden; }.recommend-bar i { display:block; height:100%; border-radius:inherit; background:#72b58f; }.recommend-win { text-align:right; color:#5f8c73; font-size:11px; font-weight:700; }.empty-recommendation { text-align:center; padding:13px 0 8px; color:#8b9991; font-size:12px; }
+.hint-button { width:100%; height:42px; border:0; border-radius:10px; background:#2f8c63; color:#fff; font-size:13px; font-weight:700; display:flex; justify-content:center; align-items:center; gap:8px; box-shadow:0 5px 12px #2f8c6333; }.hint-button:disabled { opacity:.6; }
+.battle-actions { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin:16px 0 14px; }.battle-actions button { height:40px; display:flex; gap:7px; justify-content:center; align-items:center; border:1px solid #dfe7e1; border-radius:10px; background:#fff; color:#5c6d64; font-size:12px; font-weight:650; }.battle-actions button:disabled { opacity:.4; }.battle-actions .resign-action { color:#c76868; }
+.size-footer { display:flex; align-items:center; justify-content:space-between; color:#86948c; font-size:11px; }.size-picker { display:flex; gap:3px; background:#e9efeb; padding:3px; border-radius:9px; }.size-picker button { border:0; background:transparent; color:#738279; border-radius:6px; min-width:25px; height:25px; font-size:11px; }.size-picker button.selected { background:#fff; color:#2f8c63; font-weight:800; box-shadow:0 1px 4px #294b381c; }.battle-toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:#1f2c26; color:#fff; border-radius:99px; padding:9px 15px; font-size:12px; box-shadow:0 8px 20px #15231c33; z-index:20; }
+@media (max-width:430px) { .battle-shell { padding:18px 12px 24px; }.battle-header h1 { font-size:25px; }.board-wrap { padding:9px; margin-top:15px; }.match-card { padding:11px 10px; }.player small { font-size:9px; }.size-footer { gap:8px; }.size-picker { gap:1px; }.size-picker button { min-width:23px; } }
+
+.toggle { width:42px; height:24px; padding:3px; border:0; border-radius:20px; background:#d1d9e2; }.toggle span { display:block; width:18px; height:18px; border-radius:50%; background:#fff; transition:transform .2s; box-shadow:0 1px 3px #18324a33; }.toggle.on { background:#1d5c96; }.toggle.on span { transform:translateX(18px); }
+.hint-dot { width:64%; height:64%; aspect-ratio:1; border-radius:50%; display:grid; place-items:center; line-height:1; padding:0; color:#fff; font-size:clamp(9px,2.5vw,13px); font-weight:800; position:relative; z-index:1; background:#6ea9d1; box-shadow:none; }.hint-dot.rank-0 { background:#123f70; transform:none; }.hint-dot.rank-1 { background:#2f78b0; }.hint-dot.rank-2 { background:#6ea9d1; }
+.winrate-card { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:12px 0; }.winrate-card > div { background:#fff; border:1px solid #e4ebe6; border-radius:12px; padding:10px 12px; }.winrate-card span,.winrate-card small { display:block; color:#87958e; font-size:10px; }.winrate-card strong { display:block; color:#1d5c96; font-size:22px; margin:2px 0; }
+.score-sheet { display:grid; gap:5px; background:#fff; border:1px solid #e4ebe6; border-radius:12px; padding:12px; color:#5c6d64; font-size:12px; }.score-sheet small { color:#9aa59f; font-size:10px; }
+.dialog-backdrop { position:fixed; inset:0; z-index:30; display:grid; place-items:end center; background:#14251d66; padding:12px; }.new-game-dialog { width:min(100%,430px); background:#fff; border-radius:18px; padding:18px; box-shadow:0 18px 50px #16251f44; display:grid; gap:15px; }.dialog-title { display:flex; justify-content:space-between; align-items:center; font-size:18px; }.dialog-title button { border:0; background:transparent; font-size:25px; color:#8c9992; }.new-game-dialog label { display:grid; gap:8px; color:#65756c; font-size:12px; font-weight:700; }.dialog-options { display:flex; flex-wrap:wrap; gap:6px; }.dialog-options button { border:1px solid #dce5df; background:#fafcfb; color:#607168; border-radius:8px; padding:8px 11px; font-size:12px; }.dialog-options button.selected { border-color:#1d5c96; background:#eaf3fb; color:#1d5c96; font-weight:800; }.dialog-start { height:44px; border:0; border-radius:10px; background:#1d5c96; color:#fff; font-size:13px; font-weight:800; }
+
+/* Tailwind's `lg:` is width-only, but this app switches to its desktop shell
+   only when the viewport is BOTH wide and tall enough (see
+   DESKTOP_LAYOUT_MEDIA in src/utils/responsiveLayout.ts — keep these in sync).
+   Using `lg:` for shell decisions broke short, wide viewports: the mobile
+   right panel went `lg:static` while the app was still in the mobile shell,
+   so its `w-full` consumed the whole row and the board collapsed to 0px. */
+@custom-variant desktop-shell (@media (min-width: 1024px) and (min-height: 500px));
+
+@layer base {
+  :root,
+  :root[data-ui-theme='noir'] {
+    --ui-font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --ui-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --ui-font-size: 15px;
+    --ui-bar-height: 56px;
+    --ui-bar-pad-x: 12px;
+    --ui-bar-pad-y: 8px;
+    --ui-control-size: 38px;
+    --ui-panel-pad: 12px;
+    --ui-gap: 8px;
+    --mobile-tabbar-height: 68px;
+    --ui-bg: #0f1210;
+    --ui-bar: #141815;
+    --ui-panel: #181d1a;
+    --ui-surface: #1d231f;
+    --ui-surface-2: #252c27;
+    --ui-input: #111512;
+    --ui-border: #303832;
+    --ui-border-strong: #424d45;
+    --ui-text: #e7ece8;
+    --ui-text-muted: #a1ada5;
+    /* Faint text still has to clear ~4.5:1 on --ui-bg for the tiny uppercase
+       labels it is used on. */
+    /* Lightened one step from #7f8e84, which fell to 4.16:1 on this theme's
+       deepest surface (--ui-surface-2); same sage hue, 4.84:1 at worst. */
+    --ui-text-faint: #8a9a8f;
+    --ui-accent: #8fbd79;
+    --ui-accent-soft: #243326;
+    --ui-accent-contrast: #0f1210;
+    --ui-danger: #fb7185;
+    --ui-danger-soft: #3a121c;
+    --ui-warning: #f59e0b;
+    --ui-warning-soft: #3a2a12;
+    --ui-success: #22c55e;
+    --ui-success-soft: #17351f;
+    /* KaTrain move-quality eval scale (theme independent, shared with the
+       dashboard scale in dashboard.css). */
+    --eval-blunder: rgb(114, 33, 107);
+    --eval-mistake: rgb(204, 0, 0);
+    --eval-inaccuracy: rgb(230, 102, 26);
+    --eval-slight: rgb(216, 216, 0);
+    --eval-good: rgb(171, 230, 46);
+    --eval-best: rgb(30, 150, 0);
+    color-scheme: dark;
+  }
+
+  :root[data-ui-theme='kaya'] {
+    --ui-bg: #120f0a;
+    --ui-bar: #1a150f;
+    --ui-panel: #221a12;
+    --ui-surface: #2a2016;
+    --ui-surface-2: #32251a;
+    --ui-input: #18110c;
+    --ui-border: #3b2d1f;
+    --ui-border-strong: #54402c;
+    --ui-text: #f5eee1;
+    --ui-text-muted: #c8b8a1;
+    /* Lightened one step: the previous value fell to 3.95-4.33:1 on this
+       theme's deepest surfaces (--ui-surface / --ui-surface-2). */
+    --ui-text-faint: #ac9a81;
+    --ui-accent: #f59e0b;
+    --ui-accent-soft: #3b2a12;
+    --ui-accent-contrast: #120f0a;
+    --ui-danger: #f87171;
+    --ui-danger-soft: #3a1a16;
+    --ui-warning: #f59e0b;
+    --ui-warning-soft: #3b2a12;
+    --ui-success: #22c55e;
+    --ui-success-soft: #1b2e1c;
+    color-scheme: dark;
+  }
+
+  :root[data-ui-theme='studio'] {
+    --ui-bg: #0c1219;
+    --ui-bar: #0f1722;
+    --ui-panel: #131d2a;
+    --ui-surface: #162233;
+    --ui-surface-2: #1b2b3f;
+    --ui-input: #0c141f;
+    --ui-border: #25374c;
+    --ui-border-strong: #314760;
+    --ui-text: #e7eef8;
+    --ui-text-muted: #9aa8bb;
+    /* Lightened one step: the previous value fell to 3.95-4.33:1 on this
+       theme's deepest surfaces (--ui-surface / --ui-surface-2). */
+    --ui-text-faint: #8d9fb7;
+    --ui-accent: #38bdf8;
+    --ui-accent-soft: #122a3a;
+    --ui-accent-contrast: #0c1219;
+    --ui-danger: #f87171;
+    --ui-danger-soft: #33151a;
+    --ui-warning: #fbbf24;
+    --ui-warning-soft: #332614;
+    --ui-success: #34d399;
+    --ui-success-soft: #142b26;
+    color-scheme: dark;
+  }
+
+  :root[data-ui-theme='light'] {
+    --ui-bg: #f5f7fb;
+    --ui-bar: #f0f3f8;
+    --ui-panel: #ffffff;
+    --ui-surface: #f8fafc;
+    --ui-surface-2: #eef2f7;
+    --ui-input: #ffffff;
+    --ui-border: #d6dde8;
+    --ui-border-strong: #c1cbd9;
+    --ui-text: #1e293b;
+    --ui-text-muted: #526075;
+    /* Tone and faint values are a step darker than their mid-palette shades so
+       they clear 4.5:1 both as text on the matching -soft fill and, for the
+       tones, under white on a filled button. The mid shades measured 2.9-4.4:1
+       on their own soft backgrounds. */
+    --ui-text-faint: #5d6b7e;
+    --ui-accent: #0369a1;
+    --ui-accent-soft: #e0f2fe;
+    --ui-accent-contrast: #ffffff;
+    --ui-danger: #be123c;
+    --ui-danger-soft: #ffe4e6;
+    --ui-warning: #a24a08;
+    --ui-warning-soft: #fef3c7;
+    --ui-success: #166534;
+    --ui-success-soft: #dcfce7;
+    color-scheme: light;
+  }
+
+  :root[data-ui-density='compact'] {
+    --ui-font-size: 14px;
+    --ui-bar-height: 52px;
+    --ui-bar-pad-x: 10px;
+    --ui-bar-pad-y: 6px;
+    --ui-control-size: 34px;
+    --ui-panel-pad: 10px;
+    --ui-gap: 6px;
+  }
+
+  :root[data-ui-density='comfortable'] {
+    --ui-font-size: 15px;
+    --ui-bar-height: 56px;
+    --ui-bar-pad-x: 12px;
+    --ui-bar-pad-y: 8px;
+    --ui-control-size: 38px;
+    --ui-panel-pad: 12px;
+    --ui-gap: 8px;
+  }
+
+  :root[data-ui-density='large'] {
+    --ui-font-size: 16px;
+    --ui-bar-height: 64px;
+    --ui-bar-pad-x: 14px;
+    --ui-bar-pad-y: 10px;
+    --ui-control-size: 44px;
+    --ui-panel-pad: 14px;
+    --ui-gap: 10px;
+  }
+
+  @media (max-width: 1023px), (max-height: 499px) {
+    :root,
+    :root[data-ui-density='compact'],
+    :root[data-ui-density='comfortable'],
+    :root[data-ui-density='large'] {
+      --ui-bar-height: 56px;
+      --ui-bar-pad-y: 6px;
+      --ui-control-size: 44px;
+      --mobile-tabbar-height: 68px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    :root {
+      --ui-font-size: 14px;
+      --ui-bar-height: 56px;
+      --ui-bar-pad-x: 10px;
+      --ui-bar-pad-y: 6px;
+      --ui-control-size: 44px;
+      --ui-panel-pad: 10px;
+      --ui-gap: 6px;
+      --mobile-tabbar-height: 68px;
+    }
+
+    .panel-section-header {
+      padding: 8px 10px;
+    }
+
+    .panel-section-content {
+      padding: 8px 10px;
+    }
+
+    .panel-section-title {
+      font-size: 11px;
+    }
+
+    .panel-tab {
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+
+    .panel-toolbar {
+      gap: 4px;
+      row-gap: 4px;
+    }
+
+    .panel-action-button {
+      padding: 2px 6px;
+      font-size: 10px;
+    }
+
+    .library-tree-node {
+      font-size: 12px;
+    }
+  }
+
+  .mobile-bottom-current-player {
+    max-width: 7rem;
+  }
+
+  .mobile-bottom-stone {
+    width: 13px;
+    height: 13px;
+    border-radius: 999px;
+    flex: 0 0 13px;
+    border: 1px solid transparent;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  }
+
+  .mobile-bottom-stone-black {
+    background: radial-gradient(
+      circle at 35% 32%,
+      #656565 0%,
+      #2b2b2b 36%,
+      #050505 100%
+    );
+    border-color: color-mix(in srgb, var(--ui-text-muted) 72%, transparent);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+      0 1px 3px rgba(0, 0, 0, 0.45);
+  }
+
+  .mobile-bottom-stone-white {
+    background: radial-gradient(
+      circle at 32% 28%,
+      #ffffff 0%,
+      #f4f4f4 38%,
+      #d2d2d2 100%
+    );
+    border: 1px solid rgba(15, 23, 42, 0.45);
+  }
+
+  .mobile-bottom-overflow-mode-actions {
+    display: none;
+  }
+
+  /* Keep the primary review strip genuinely touch-sized even when the mobile
+     root font scale makes Tailwind's rem-based min-h-11 smaller than 44px. */
+  .mobile-bottom-controls button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .mobile-bottom-move-editor input {
+    min-height: 44px;
+  }
+
+  /* The tree tab's header also carries first/last navigation, the tree/list
+     toggle and the clock, and those overflowed the bar at every phone width
+     once a game had moves — the clock was clipped off-screen at 360, 390 and
+     430px alike. Shed the two redundant labels there instead: the bottom tab
+     bar already names the view, and a bare chevron is the standard back
+     affordance. Other tabs keep both labels, since they have room. */
+  .mobile-panel-header[data-mobile-panel-tab='tree'] .mobile-panel-title,
+  .mobile-panel-header[data-mobile-panel-tab='tree'] .mobile-panel-back-label {
+    display: none;
+  }
+
+  .mobile-panel-header[data-mobile-panel-tab='tree'] .mobile-panel-back {
+    padding-inline: 0.5rem;
+  }
+
+
+  @media (max-width: 430px) {
+    .mobile-bottom-controls {
+      gap: 0.25rem !important;
+    }
+
+    .mobile-bottom-navigation {
+      gap: 2px !important;
+    }
+
+    .mobile-bottom-mode-actions {
+      gap: 0 !important;
+    }
+
+    .mobile-bottom-meta {
+      justify-content: center;
+      gap: 1px !important;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+    }
+
+    .mobile-bottom-current-player {
+      display: none;
+    }
+
+    .mobile-bottom-current-captures,
+    .mobile-bottom-board-size,
+    .mobile-bottom-handicap,
+    .mobile-bottom-meta-divider,
+    .mobile-bottom-meta [data-bottom-branch-chip='true'] {
+      display: none !important;
+    }
+
+    .mobile-bottom-turn-chip,
+    .mobile-bottom-move-button,
+    .mobile-bottom-move-editor {
+      flex: 0 0 auto;
+    }
+
+    .mobile-bottom-move-button {
+      padding-left: 0.25rem !important;
+      padding-right: 0.25rem !important;
+      white-space: nowrap;
+    }
+
+    .mobile-bottom-move-editor {
+      min-width: 72px;
+      min-height: 44px;
+      justify-content: center;
+      white-space: nowrap;
+    }
+
+    .mobile-bottom-meta [data-mobile-save-status='true'] {
+      width: 24px;
+      height: 24px;
+      justify-content: center;
+      gap: 0;
+      padding: 0;
+    }
+
+    .mobile-bottom-save-status-label {
+      display: none;
+    }
+
+    /* The strip clips with overflow-hidden, and at 414px the fixed board size
+       pushed the save-status badge past the edge. Drop the value that never
+       changes rather than a live "unsaved" warning or the current-turn chip,
+       which flexbox already squeezes toward zero under pressure. */
+    .mobile-bottom-meta-size {
+      display: none;
+    }
+  }
+
+  @media (max-width: 380px) {
+    .mobile-panel-header {
+      gap: 4px !important;
+      padding-left: 6px !important;
+      padding-right: 6px !important;
+    }
+
+    /* No blanket `.mobile-panel-title { display: none }` here. It was written
+       for the tree tab, which carries first/last navigation, the view toggle
+       and the clock alongside the title; the tree tab now sheds its own title
+       at every width, so all this rule still did was leave the Review panel
+       unnamed below 380px. Review has only the back button and the clock, and
+       the title measures 120px clear at 320px with the header not overflowing,
+       so it stays. The title is flex-1 and truncates, which is what a longer
+       locale needs anyway. */
+
+    .mobile-tree-view-controls {
+      gap: 2px !important;
+    }
+
+    .mobile-bottom-controls {
+      gap: 2px !important;
+      padding-left: 6px !important;
+      padding-right: 6px !important;
+    }
+
+    .mobile-bottom-meta {
+      gap: 1px !important;
+    }
+
+    /* Turn ownership is the primary live status. On the narrowest phones,
+       shed the secondary save badge instead of hiding whose turn it is. */
+    .mobile-bottom-meta [data-mobile-save-status='true'] {
+      display: none !important;
+    }
+  }
+
+  /* Below this the move counter's 44px touch target plus the full save badge no
+     longer fit the strip, so the badge goes icon-only rather than being clipped. */
+  @media (max-width: 340px) {
+    .mobile-bottom-save-label {
+      display: none;
+    }
+
+    /* Six full-size controls leave no room for a useful move count on 320px
+       screens. Keep the review path legible and move the two board modes into
+       the existing overflow sheet, where their 44px targets remain intact. */
+    .mobile-bottom-mode-actions {
+      display: none !important;
+    }
+
+    .mobile-bottom-overflow-mode-actions {
+      display: grid;
+    }
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background: var(--ui-bg);
+    color: var(--ui-text);
+    font-family: var(--ui-font);
+  }
+
+  /* Focus ring for accessibility */
+  button:focus-visible,
+  [role='button']:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid var(--ui-accent);
+    outline-offset: 2px;
+  }
+
+  /* Remove default outline */
+  button:focus:not(:focus-visible),
+  [role='button']:focus:not(:focus-visible),
+  input:focus:not(:focus-visible),
+  select:focus:not(:focus-visible),
+  textarea:focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Programmatic focus restoration should stay visible for keyboard users,
+     without flashing a keyboard ring after a pointer-dismissed mobile sheet. */
+  .mobile-more-trigger-pointer-focus:focus,
+  .mobile-more-trigger-pointer-focus:focus-visible {
+    outline: none;
+  }
+
+  .menu-drawer-pointer-focus:focus,
+  .menu-drawer-pointer-focus:focus-visible {
+    outline: none;
+  }
+
+  .mobile-tools-pointer-focus:focus,
+  .mobile-tools-pointer-focus:focus-visible {
+    outline: none;
+  }
+
+  .mobile-tab-pointer-focus:focus,
+  .mobile-tab-pointer-focus:focus-visible {
+    outline: none;
+  }
+}
+
+@layer utilities {
+  .font-sans {
+    font-family: var(--ui-font);
+  }
+
+  .font-mono {
+    font-family: var(--ui-font-mono);
+  }
+
+  .settings-modal label.text-slate-300,
+  .settings-modal label.text-slate-400 {
+    color: var(--ui-text-muted);
+  }
+}
+
+@layer components {
+  .ui-root {
+    background: var(--ui-bg);
+    color: var(--ui-text);
+    font-family: var(--ui-font);
+    font-size: var(--ui-font-size);
+  }
+
+  .ui-bg {
+    background: var(--ui-bg);
+  }
+
+  .ui-bar {
+    background: var(--ui-bar);
+    border-color: var(--ui-border);
+  }
+
+  .ui-bar-height {
+    height: var(--ui-bar-height);
+    min-height: var(--ui-bar-height);
+  }
+
+  .ui-bar-pad {
+    padding: var(--ui-bar-pad-y) var(--ui-bar-pad-x);
+  }
+
+  .app-language-switcher {
+    display: none;
+  }
+
+  @media (min-width: 1280px) {
+    .app-language-switcher {
+      display: block;
+    }
+  }
+
+  .ui-panel {
+    background: var(--ui-panel);
+    border-color: var(--ui-border);
+  }
+
+  /* Dialog containers receive programmatic focus so screen readers announce
+     them and the shared focus trap can start inside. They are not controls, so
+     avoid painting the browser's unrelated blue focus ring around the panel. */
+  [role='dialog'][tabindex='-1']:focus {
+    outline: none;
+  }
+
+  .settings-modal .settings-search-input {
+    background: var(--ui-surface);
+    border-color: var(--ui-border);
+    color: var(--ui-text);
+  }
+
+  .settings-modal .settings-search-input::placeholder {
+    color: var(--ui-text-faint);
+  }
+
+  .settings-modal .settings-search-input:focus-visible {
+    outline: 2px solid var(--ui-accent);
+    outline-offset: 1px;
+  }
+
+  /* The command palette supplies its own labelled clear button. Leaving the
+     browser decoration in place creates two adjacent, indistinguishable Xs. */
+  [data-command-palette-search='true']::-webkit-search-cancel-button {
+    display: none;
+    appearance: none;
+  }
+
+  [data-keyboard-help-search='true']::-webkit-search-cancel-button {
+    display: none;
+    appearance: none;
+  }
+
+  [data-library-search='true']::-webkit-search-cancel-button {
+    display: none;
+    appearance: none;
+  }
+
+  /* Floats over the panel rather than pushing the tabs down, so the content
+     below does not jump with every keystroke. */
+  .settings-modal .settings-search-results {
+    position: absolute;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    max-height: 15rem;
+    overflow-y: auto;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 0.5rem;
+    background: var(--ui-panel);
+    box-shadow: 0 8px 28px rgb(0 0 0 / 0.18);
+  }
+
+  .settings-modal .settings-search-result {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    font-size: 0.875rem;
+    color: var(--ui-text);
+  }
+
+  .settings-modal .settings-search-result:hover,
+  .settings-modal .settings-search-result:focus-visible,
+  .settings-modal .settings-search-result[aria-selected='true'] {
+    background: var(--ui-surface);
+  }
+
+  .settings-modal .settings-search-result-tab {
+    flex: none;
+    font-size: 0.75rem;
+    color: var(--ui-text-faint);
+  }
+
+  .settings-modal .settings-search-empty {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--ui-text-muted);
+  }
+
+  /* Brief marker on the control a search result landed on — a long panel
+     otherwise gives no clue which row was the answer. */
+  .settings-modal [data-settings-found='true'] {
+    border-radius: 0.375rem;
+    box-shadow: 0 0 0 2px var(--ui-accent);
+    transition: box-shadow 200ms ease-out;
+  }
+
+  .settings-modal .settings-tabs {
+    border-color: var(--ui-border);
+  }
+
+  .settings-modal .settings-tab {
+    color: var(--ui-text-muted);
+    border-color: transparent;
+  }
+
+  .settings-modal .settings-tab:hover {
+    color: var(--ui-text);
+  }
+
+  .settings-modal .settings-tab-active {
+    color: var(--ui-text);
+    border-color: var(--ui-accent);
+  }
+
+  .settings-modal .settings-tab-label-compact {
+    display: none;
+  }
+
+  .keyboard-help-title {
+    font-size: 1.125rem;
+    line-height: 1.75rem;
+  }
+
+  /* The Customize label used to drop only below 360px, which left the dialog's
+     own title ellipsised to "Keyboard Shortc…" at 375px and 390px — the two
+     commonest phone widths — and with zero slack at 414px and 430px, where any
+     locale with a longer title would clip too. Shed it across the whole phone
+     range instead; the gear icon keeps its aria-label, exactly as it already
+     did below 360px.
+
+     In `em` rather than `px` on purpose: a media-query em follows the reader's
+     browser font size, so enlarging text compacts the header sooner instead of
+     leaving a px threshold to squeeze the title, which is what the header
+     markup's own comment asks for. */
+  @media (max-width: 30em) {
+    [data-keyboard-help-customize='true'] {
+      width: 44px;
+      min-width: 44px;
+      justify-content: center;
+      padding-right: 0;
+      padding-left: 0;
+    }
+
+    .keyboard-help-customize-label {
+      display: none;
+    }
+  }
+
+  @media (max-width: 360px) {
+    .settings-modal .settings-tab-label-full {
+      display: none;
+    }
+
+    .settings-modal .settings-tab-label-compact {
+      display: inline;
+    }
+
+    .keyboard-help-title {
+      font-size: 1rem;
+      line-height: 1.25rem;
+    }
+
+  }
+
+  /* Themed switch for every boolean control, not just the ones in Settings:
+     scoping this to `.settings-modal` left the same `toggle` class rendering a
+     bare 13px native checkbox in New Game, Game analysis and the tsumego frame
+     — a third of the minimum touch target, and nothing like its 24 siblings. */
+  .toggle {
+    appearance: none;
+    position: relative;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .toggle::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 44px;
+    height: 24px;
+    border: 1px solid var(--ui-border);
+    border-radius: 999px;
+    background: var(--ui-surface);
+    transform: translateY(-50%);
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 6px;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--ui-text-muted);
+    transform: translateY(-50%);
+    transition:
+      background-color 0.15s ease,
+      transform 0.15s ease;
+  }
+
+  .toggle:checked {
+    background: transparent;
+  }
+
+  .toggle:checked::before {
+    background: var(--ui-accent-soft);
+    border-color: var(--ui-accent);
+  }
+
+  .toggle:checked::after {
+    background: var(--ui-accent);
+    transform: translate(14px, -50%);
+  }
+
+  @media (max-width: 1023px), (max-height: 499px) {
+    [aria-labelledby='menu-title'] button,
+    [aria-labelledby='menu-title'] a[href] {
+      min-width: 44px;
+      min-height: 44px;
+    }
+
+    [aria-labelledby='menu-title'] a[href] {
+      display: inline-flex;
+      align-items: center;
+    }
+
+    [data-menu-action-grid] > button:nth-child(odd) {
+      border-right: 1px solid var(--ui-border);
+    }
+
+    [data-menu-action-grid] > button:nth-child(n + 3) {
+      border-top: 1px solid var(--ui-border);
+    }
+
+    /* A final unpaired action should read as a deliberate full-width row,
+       rather than leaving a bordered ghost cell beside it. */
+    [data-menu-action-grid='game'] > button:last-child:nth-child(7) {
+      grid-column: 1 / -1;
+      border-right: 0;
+    }
+
+    .settings-modal button,
+    .settings-modal a[href],
+    .settings-modal
+      input:not([type='hidden']):not([type='checkbox']):not([type='radio']),
+    .settings-modal select,
+    .settings-modal textarea {
+      min-width: 44px;
+      min-height: 44px;
+    }
+
+    /* The mobile Tools sheet had neither of the treatments above, leaving its
+       theme selects at 26px and its list rows at 39px. */
+    [data-mobile-tools-dialog='true'] button,
+    [data-mobile-tools-dialog='true'] a[href],
+    [data-mobile-tools-dialog='true'] input:not([type='hidden']),
+    [data-mobile-tools-dialog='true'] select {
+      min-width: 44px;
+      min-height: 44px;
+    }
+
+    /* App navigation and import/export already live in the mobile Menu, while
+       Sound has a dedicated header toggle. Keep Tools focused on board and
+       analysis work instead of repeating those destinations in a long sheet. */
+    [data-mobile-tools-dialog='true'] .mobile-tools-redundant {
+      display: none !important;
+    }
+
+    /* The view menu is a two-column block built for a 512px popover, and the
+       sheet drops it into 390px. The rule above hides eight of the left
+       column's rows as redundant, so six rows sat beside thirteen with a
+       hairline down the ragged gap, each column's labels crammed into half the
+       width — "Next move preview" ran to within 17px of its own value. Stack it
+       into one column, the way every other section of the sheet already reads.
+       Both properties come from Tailwind utilities, which outrank this layer. */
+    [data-mobile-tools-dialog='true'] [data-mobile-tools-view-grid='true'] {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    [data-mobile-tools-dialog='true']
+      [data-mobile-tools-view-grid='true']
+      > :first-child {
+      border-right-width: 0 !important;
+    }
+
+    .settings-modal .settings-tab {
+      min-height: 44px;
+      padding-top: 0.625rem;
+      padding-bottom: 0.625rem;
+    }
+
+    /* The base .toggle styles above already size the switch to 44px. */
+  }
+
+  .ui-panel-pad {
+    padding: var(--ui-panel-pad);
+  }
+
+  .ui-surface {
+    background: var(--ui-surface);
+    border-color: var(--ui-border);
+  }
+
+  .ui-surface-2 {
+    background: var(--ui-surface-2);
+    border-color: var(--ui-border);
+  }
+
+  .ui-input {
+    background: var(--ui-input);
+    color: var(--ui-text);
+    border-color: var(--ui-border);
+  }
+
+  .ui-control {
+    width: var(--ui-control-size);
+    height: var(--ui-control-size);
+  }
+
+  .notification-toast-region {
+    position: absolute;
+    top: 0.75rem;
+    left: auto;
+    right: 0.75rem;
+    /* Modal overlays begin at 50. Notifications remain above workspace chrome
+       without covering the title or controls of the task the user just opened. */
+    z-index: 44;
+    display: flex;
+    justify-content: flex-end;
+    pointer-events: none;
+  }
+
+  .notification-toast-region--below-command-bar {
+    top: 8.75rem;
+  }
+
+  .notification-toast {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: fit-content;
+    min-width: min(100%, 16rem);
+    max-width: min(24rem, calc(100vw - 1.5rem));
+    padding: 0.625rem 0.75rem;
+    color: var(--ui-text);
+    background: color-mix(in srgb, var(--ui-panel) 94%, transparent);
+    border: 1px solid var(--ui-border);
+    border-left-width: 4px;
+    border-radius: 8px;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32);
+    backdrop-filter: blur(10px);
+    animation: notification-toast-in 160ms ease-out;
+  }
+
+  .notification-toast-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 999px;
+  }
+
+  .notification-toast-message {
+    min-width: 0;
+    flex: 1 1 auto;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .notification-toast-action,
+  .notification-toast-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 2.875rem;
+    height: 2.875rem;
+    color: var(--ui-text-muted);
+    border: 1px solid transparent;
+    border-radius: 6px;
+    transition:
+      color 0.15s ease,
+      background 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .notification-toast-action.copied {
+    color: var(--ui-success);
+    background: var(--ui-success-soft);
+    border-color: var(--ui-success);
+  }
+
+  /* Text rather than an icon: "Undo" reverses real work, so it should not be
+     guessed at from a glyph. Sized to the same 2.875rem touch target height as
+     the icon buttons beside it. */
+  .notification-toast-undo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    height: 2.875rem;
+    padding-inline: 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--ui-accent);
+    background: var(--ui-accent-soft);
+    border: 1px solid var(--ui-accent);
+    border-radius: 6px;
+    transition:
+      color 0.15s ease,
+      background 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .notification-toast-undo:hover,
+  .notification-toast-undo:focus-visible {
+    color: var(--ui-text);
+    background: var(--ui-surface-2);
+  }
+
+  .notification-toast-action:hover,
+  .notification-toast-action:focus-visible,
+  .notification-toast-close:hover,
+  .notification-toast-close:focus-visible {
+    color: var(--ui-text);
+    background: var(--ui-surface-2);
+    border-color: var(--ui-border);
+    outline: none;
+  }
+
+  .notification-toast-info {
+    border-left-color: var(--ui-accent);
+  }
+
+  .notification-toast-info .notification-toast-icon {
+    color: var(--ui-accent);
+    background: var(--ui-accent-soft);
+  }
+
+  .notification-toast-success {
+    border-left-color: var(--ui-success);
+  }
+
+  .notification-toast-success .notification-toast-icon {
+    color: var(--ui-success);
+    background: var(--ui-success-soft);
+  }
+
+  .notification-toast-error {
+    border-left-color: var(--ui-danger);
+  }
+
+  .notification-toast-error .notification-toast-icon {
+    color: var(--ui-danger);
+    background: var(--ui-danger-soft);
+  }
+
+  @keyframes notification-toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (min-width: 640px) {
+    .notification-toast-region {
+      top: 1rem;
+      left: auto;
+      right: 1rem;
+      justify-content: flex-end;
+    }
+
+    .notification-toast {
+      gap: 0.75rem;
+      min-width: min(100%, 16rem);
+      max-width: min(calc(100vw - 1.5rem), 26rem);
+      padding: 0.75rem 0.875rem;
+    }
+
+    .notification-toast-region--below-command-bar {
+      top: 8.75rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .notification-toast-region--desktop-dashboard {
+      top: 3.25rem;
+      right: calc(var(--sidebar-w) + 1rem);
+    }
+
+    /* "Below the header" cleared the 50px header but not the game strip
+       directly under it, so an error toast sat on the strip and covered the
+       save badge and the clock — and errors are the one type that never
+       auto-dismisses, so that cover lasted until it was closed by hand.
+       The board column has no gap wide enough to hold the toast beside the
+       board — 192px between the board's right edge and the sidebar at 1280 —
+       so this clips the board's top edge instead, which is the lesser cover. */
+    body:has(.wk-dashboard[data-gamestrip="open"])
+      .notification-toast-region--desktop-dashboard:has(.notification-toast-error) {
+      top: 5.9375rem; /* the 3.25rem header offset plus the strip's 43px */
+    }
+
+    .notification-toast-region--desktop-dashboard .notification-toast {
+      min-height: 2.75rem;
+      gap: 0.5rem;
+      padding: 0.375rem 0.625rem;
+    }
+
+    .notification-toast-region--desktop-dashboard .notification-toast-icon {
+      width: 1.5rem;
+      height: 1.5rem;
+    }
+
+    .notification-toast-region--desktop-dashboard .notification-toast-message {
+      font-size: 0.8125rem;
+    }
+
+    .notification-toast-action,
+    .notification-toast-close {
+      width: 2rem;
+      height: 2rem;
+    }
+
+    /* Routine status rides in the header's spare middle as a flex child, not
+       as an overlay anchored to the sidebar. Anchoring to the sidebar measured
+       the wrong column — the header spans the full width, so its right-hand
+       cluster reaches past the sidebar edge and a right-aligned toast covered
+       the language switcher by 43px at 1280. In flow it can only ever take the
+       gap the two clusters leave, at any width or locale. */
+    .notification-toast-region--desktop-header {
+      position: static;
+      width: 100%;
+      min-width: 0;
+      justify-content: center;
+    }
+
+    .notification-toast-region--desktop-header .notification-toast {
+      min-width: 0;
+      max-width: 100%;
+      min-height: 0;
+      gap: 0.5rem;
+      padding: 0.3125rem 0.5rem;
+    }
+
+    .notification-toast-region--desktop-header .notification-toast-icon {
+      flex: none;
+      width: 1.125rem;
+      height: 1.125rem;
+    }
+
+    /* One header line, with the full text kept in the DOM and the title. */
+    .notification-toast-region--desktop-header .notification-toast-message {
+      overflow: hidden;
+      font-size: 0.8125rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .notification-toast-region--desktop-header .notification-toast-undo,
+    .notification-toast-region--desktop-header .notification-toast-close {
+      flex: none;
+    }
+
+    .notification-toast-region--desktop-header .notification-toast-close {
+      width: 1.5rem;
+      height: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) and (max-width: 1100px) {
+    .notification-toast-region--desktop-dashboard {
+      right: calc(var(--sidebar-w) + 0.5rem);
+    }
+
+    .notification-toast-region--desktop-dashboard .notification-toast {
+      min-width: 0;
+      gap: 0.375rem;
+      padding: 0.25rem 0.375rem;
+    }
+
+    .notification-toast-region--desktop-dashboard .notification-toast-icon {
+      display: none;
+    }
+
+    .notification-toast-region--desktop-dashboard .notification-toast-message {
+      font-size: 0.75rem;
+    }
+
+    .notification-toast-region--desktop-dashboard .notification-toast-action,
+    .notification-toast-region--desktop-dashboard .notification-toast-close {
+      width: 1.75rem;
+      height: 1.75rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    /* Previously this block covered only the toast, leaving ~36 CSS transitions,
+       5 keyframe animations and the Tailwind animate- and transition- utilities
+       running — including the infinite engine-pill pulse in dashboard.css, which
+       had no reduced-motion handling at all. Removing motion wholesale is safe
+       here because nothing conveys state through movement alone: the save status
+       uses a different icon shape per state plus a text label, and the engine dot
+       is colour-coded. No code listens for transitionend/animationend. */
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+
+    .notification-toast {
+      animation: none;
+    }
+  }
+
+  .panel-section {
+    display: flex;
+    flex-direction: column;
+    background: var(--ui-panel);
+    border-bottom: 1px solid var(--ui-border);
+    flex-shrink: 0;
+    min-height: 0;
+  }
+
+  .panel-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 8px 10px;
+    background: var(--ui-panel);
+    border-bottom: 1px solid var(--ui-border);
+    transition: background 0.2s ease;
+    user-select: none;
+  }
+
+  .panel-section-header:hover {
+    background: var(--ui-surface-2);
+  }
+
+  .panel-section-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    /* An 11px cap-height line box made this disclosure button 16px tall. It
+       spans the panel's width, so the height was the only axis under the
+       24x24 floor, and the header row has the room. */
+    min-height: 24px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    flex: 1;
+    text-align: left;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ui-text-muted);
+    transition: color 0.15s ease;
+  }
+
+  .panel-section-title:hover {
+    color: var(--ui-text);
+  }
+
+  .panel-collapse-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ui-text-muted);
+    transition:
+      transform 0.2s ease,
+      color 0.15s ease;
+  }
+
+  .panel-collapse-icon.open {
+    transform: rotate(90deg);
+  }
+
+  .panel-section-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .panel-section-content {
+    padding: 8px 10px;
+    min-height: 0;
+  }
+
+  .panel-section-content::-webkit-scrollbar,
+  .library-tree::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .panel-section-content::-webkit-scrollbar-track,
+  .library-tree::-webkit-scrollbar-track {
+    background: var(--ui-surface-2);
+  }
+
+  .panel-section-content::-webkit-scrollbar-thumb,
+  .library-tree::-webkit-scrollbar-thumb {
+    background: var(--ui-border-strong);
+    border-radius: 4px;
+  }
+
+  .panel-section-content::-webkit-scrollbar-thumb:hover,
+  .library-tree::-webkit-scrollbar-thumb:hover {
+    background: var(--ui-border);
+  }
+
+  .panel-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 6px;
+    background: var(--ui-surface-2);
+    border-bottom: 1px solid var(--ui-border);
+    min-height: 30px;
+    flex-wrap: wrap;
+    row-gap: 3px;
+  }
+
+  .ui-bar input[type="number"][aria-label="Move number"]::-webkit-outer-spin-button,
+  .ui-bar input[type="number"][aria-label="Move number"]::-webkit-inner-spin-button,
+  .panel-toolbar input[type="number"][aria-label="Branch number"]::-webkit-outer-spin-button,
+  .panel-toolbar input[type="number"][aria-label="Branch number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .ui-bar input[type="number"][aria-label="Move number"],
+  .panel-toolbar input[type="number"][aria-label="Branch number"] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+
+  .panel-icon-button {
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--ui-text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .panel-icon-button:hover:not(:disabled) {
+    background: var(--ui-surface-2);
+    color: var(--ui-text);
+  }
+
+  .panel-icon-button.active {
+    background: var(--ui-surface-2);
+    color: var(--ui-text);
+  }
+
+  .panel-icon-button:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+
+  .panel-icon-button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .panel-tab-strip {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    background: var(--ui-surface-2);
+    border-bottom: 1px solid var(--ui-border);
+    flex-shrink: 0;
+  }
+
+  .panel-tab {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 10px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ui-text-muted);
+    transition:
+      color 0.15s ease,
+      background 0.15s ease;
+  }
+
+  .panel-tab:hover {
+    color: var(--ui-text);
+    background: var(--ui-surface);
+  }
+
+  .panel-tab.active {
+    color: var(--ui-accent);
+    background: var(--ui-panel);
+    border-bottom-color: var(--ui-accent);
+  }
+
+  .panel-tab svg {
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 768px) {
+    .panel-tab span {
+      display: none;
+    }
+
+    .panel-tab {
+      padding: 10px;
+    }
+  }
+
+  .panel-action-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    /* One height for every small action in the side rail: see the note on
+       .graph-legend .lg in dashboard.css. */
+    min-height: 28px;
+    padding: 3px 7px;
+    border-radius: 4px;
+    border: 1px solid var(--ui-border);
+    background: transparent;
+    color: var(--ui-text-muted);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    transition:
+      color 0.15s ease,
+      background 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .panel-action-button:hover:not(:disabled) {
+    color: var(--ui-text);
+    background: var(--ui-surface-2);
+  }
+
+  .panel-action-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .panel-action-button.active {
+    color: var(--ui-text);
+    background: var(--ui-surface-2);
+    border-color: var(--ui-border-strong);
+  }
+
+  .panel-action-button.danger {
+    color: var(--ui-danger);
+    border-color: var(--ui-danger);
+  }
+
+  @media (max-width: 1023px), (max-height: 499px) {
+    .game-analysis-modal {
+      max-height: calc(100dvh - 24px) !important;
+    }
+
+    .panel-section-header {
+      min-height: 44px;
+      padding: 0 10px;
+    }
+
+    .panel-section-title {
+      min-height: 44px;
+    }
+
+    .panel-toolbar {
+      gap: 0.375rem;
+      row-gap: 0.375rem;
+      min-height: 44px;
+      padding: 0.375rem;
+    }
+
+    .panel-tab {
+      min-height: 44px;
+      padding: 10px 12px;
+    }
+
+    .panel-action-button {
+      min-width: 44px;
+      min-height: 44px;
+      padding: 0 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1.1;
+    }
+
+    .panel-icon-button {
+      width: 44px;
+      height: 44px;
+      border-radius: 6px;
+    }
+
+    .new-game-modal button,
+    .new-game-modal select,
+    .new-game-modal textarea,
+    .new-game-modal input:not([type='checkbox']):not([type='radio']),
+    .game-analysis-modal button,
+    .game-analysis-modal select,
+    .game-analysis-modal textarea,
+    .game-analysis-modal input:not([type='checkbox']):not([type='radio']) {
+      min-height: 44px;
+    }
+
+    [data-library-toolbar='true'] input[type='search'],
+    [data-library-toolbar='true'] select,
+    [data-library-toolbar='true'] .library-search-clear,
+    [data-library-toolbar='true'] .library-select-all,
+    .library-breadcrumb-button {
+      min-height: 44px;
+    }
+
+    [data-library-toolbar='true'] .library-search-clear,
+    [data-library-toolbar='true'] .library-select-all {
+      min-width: 44px;
+      width: 44px;
+      height: 44px;
+    }
+  }
+
+  .library-panel {
+    container-type: inline-size;
+  }
+
+  @container (max-width: 430px) {
+    .library-panel .library-header-collapsible-action {
+      display: none;
+    }
+  }
+
+  .edit-toolbar--analysis-offset {
+    top: calc(var(--board-tool-offset-y, 8.25rem) + 3.25rem);
+  }
+
+  .analysis-command-bar {
+    position: relative;
+    z-index: 12;
+    display: grid;
+    grid-template-columns: minmax(8rem, auto) minmax(17rem, 1fr);
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    width: min(100%, 50rem);
+    min-height: 3.25rem;
+    margin: 0 auto 0.75rem;
+    padding: 0.5rem 0.625rem;
+    overflow: visible;
+    color: var(--ui-text);
+    background: color-mix(in srgb, var(--ui-panel) 94%, transparent);
+    border: 1px solid var(--ui-border);
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  }
+
+  .analysis-command-bar-slot {
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: 0;
+  }
+
+  .analysis-command-bar-slot--reserve {
+    min-height: 3.875rem;
+  }
+
+  .analysis-command-bar-slot .analysis-command-bar {
+    margin-bottom: 0;
+  }
+
+  /* The slot's single-row layout needs ~27rem of column minimums, so it only
+     applies above the width where the bar stacks (see the 900px rules below) —
+     these selectors outrank that media query and would otherwise force the
+     three columns to overflow a phone-width board column. */
+  @media (min-width: 901px) {
+    .analysis-command-bar-slot .analysis-command-bar {
+      grid-template-columns: minmax(7rem, auto) minmax(10rem, 1fr) minmax(10rem, auto);
+    }
+
+    .analysis-command-bar-slot .analysis-command-bar__actions {
+      grid-column: auto;
+      min-width: 0;
+      max-width: min(28rem, 45vw);
+      flex-wrap: nowrap;
+      justify-content: flex-start;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .analysis-command-bar-slot .analysis-command-bar__actions::-webkit-scrollbar {
+      display: none;
+    }
+
+    .analysis-command-bar-slot .analysis-command-bar__metrics {
+      display: flex;
+      min-width: 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .analysis-command-bar-slot .analysis-command-bar__metrics::-webkit-scrollbar {
+      display: none;
+    }
+
+    .analysis-command-bar-slot .analysis-command-bar__metric {
+      flex: 0 0 auto;
+      min-width: 4.75rem;
+    }
+  }
+
+  .analysis-command-bar__status {
+    display: inline-flex;
+    min-width: 0;
+    max-width: 100%;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    color: var(--ui-text-muted);
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .analysis-command-bar__status--loading,
+  .analysis-command-bar__status--fallback {
+    color: var(--ui-warning);
+    background: var(--ui-warning-soft);
+    border-color: var(--ui-warning);
+  }
+
+  .analysis-command-bar__status--ready {
+    color: var(--ui-success);
+    background: var(--ui-success-soft);
+    border-color: color-mix(in srgb, var(--ui-success) 75%, var(--ui-border));
+  }
+
+  .analysis-command-bar__status--error {
+    color: var(--ui-danger);
+    background: var(--ui-danger-soft);
+    border-color: var(--ui-danger);
+  }
+
+  .analysis-command-bar__dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    flex: 0 0 auto;
+    border-radius: 999px;
+  }
+
+  .analysis-command-bar__status-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .analysis-command-bar__status-copy {
+    display: inline-flex;
+    width: 1.75rem;
+    height: 1.75rem;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    color: var(--ui-danger);
+    background: var(--ui-danger-soft);
+    border: 1px solid var(--ui-danger);
+    border-radius: 6px;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease,
+      transform 0.15s ease;
+  }
+
+  .analysis-command-bar__status-copy:hover {
+    color: #fff;
+    background: var(--ui-danger);
+  }
+
+  .analysis-command-bar__status-copy:active {
+    transform: translateY(1px);
+  }
+
+  .analysis-command-bar__status-copy.copied {
+    color: var(--ui-accent);
+    background: var(--ui-accent-soft);
+    border-color: var(--ui-accent);
+  }
+
+  .analysis-command-bar__metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(5.25rem, 1fr));
+    min-width: 0;
+    gap: 0.375rem;
+  }
+
+  .analysis-command-bar__metric {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.125rem;
+    padding: 0.25rem 0.5rem;
+    border-left: 1px solid var(--ui-border);
+  }
+
+  .analysis-command-bar__value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--ui-font-mono);
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
+  /* Win rate and score are neutral state readouts; semantic colors stay
+     reserved for move-quality tones (success/warning/danger below). */
+  .analysis-command-bar__value--win,
+  .analysis-command-bar__value--score {
+    color: var(--ui-text);
+  }
+
+  .analysis-command-bar__value--success {
+    color: var(--ui-success);
+  }
+
+  .analysis-command-bar__value--warning {
+    color: var(--ui-warning);
+  }
+
+  .analysis-command-bar__value--best {
+    color: var(--ui-accent);
+  }
+
+  .analysis-command-bar__value--danger {
+    color: var(--ui-danger);
+  }
+
+  .analysis-command-bar__value--muted {
+    color: var(--ui-text-muted);
+  }
+
+  .analysis-command-bar__label {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ui-text-faint);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .analysis-command-bar__label-compact {
+    display: none;
+  }
+
+  .analysis-command-bar__actions {
+    display: flex;
+    align-items: center;
+    grid-column: 1 / -1;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    min-width: 0;
+  }
+
+  .analysis-command-bar__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    min-height: 2.25rem;
+    max-width: none;
+    padding: 0.375rem 0.625rem;
+    overflow: hidden;
+    color: var(--ui-text-muted);
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease,
+      transform 0.15s ease;
+  }
+
+  .analysis-command-bar__button svg {
+    flex: 0 0 auto;
+  }
+
+  .analysis-command-bar__button span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .analysis-command-bar__depth-meter {
+    display: inline-flex;
+    flex: 0 0 2.5rem;
+    align-items: center;
+    gap: 0.125rem;
+    min-width: 2.5rem;
+    max-width: 2.5rem;
+    overflow: visible;
+  }
+
+  .analysis-command-bar__depth-meter-segment {
+    display: block;
+    flex: 1 1 0;
+    height: 0.3125rem;
+    min-width: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ui-text-muted) 32%, transparent);
+  }
+
+  .analysis-command-bar__depth-meter-segment.active {
+    background: var(--ui-accent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-accent) 30%, transparent);
+  }
+
+  .analysis-command-bar__button:hover:not(:disabled) {
+    color: var(--ui-text);
+    background: var(--ui-surface-2);
+    border-color: var(--ui-border-strong);
+  }
+
+  .analysis-command-bar__button:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+  }
+
+  .analysis-command-bar__button:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  .analysis-command-bar__button.active {
+    color: var(--ui-accent);
+    background: var(--ui-accent-soft);
+    border-color: var(--ui-accent);
+  }
+
+  .analysis-command-bar__button.danger {
+    color: var(--ui-danger);
+    background: var(--ui-danger-soft);
+    border-color: var(--ui-danger);
+  }
+
+  .analysis-command-bar__button--dismiss {
+    margin-left: 0.25rem;
+    padding: 0.375rem;
+    min-width: 2.25rem;
+  }
+
+  .analysis-command-bar__depth-popover {
+    position: absolute;
+    right: 0.625rem;
+    top: calc(100% + 0.5rem);
+    bottom: auto;
+    z-index: 40;
+    width: min(22rem, calc(100vw - 1rem));
+    padding: 0.75rem;
+    color: var(--ui-text);
+    background: color-mix(in srgb, var(--ui-panel) 98%, black);
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 8px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34);
+  }
+
+  .analysis-command-bar__depth-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.625rem;
+  }
+
+  .analysis-command-bar__depth-title {
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    line-height: 1.1;
+    text-transform: uppercase;
+  }
+
+  .analysis-command-bar__depth-subtitle {
+    margin-top: 0.25rem;
+    color: var(--ui-text-faint);
+    font-size: 0.6875rem;
+    font-weight: 700;
+  }
+
+  .analysis-command-bar__depth-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    color: var(--ui-text-muted);
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .analysis-command-bar__depth-close:hover {
+    color: var(--ui-text);
+    background: var(--ui-surface-2);
+  }
+
+  .analysis-command-bar__depth-options {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.375rem;
+  }
+
+  .analysis-command-bar__depth-option {
+    display: flex;
+    min-width: 0;
+    min-height: 3rem;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0.125rem;
+    padding: 0.5rem;
+    color: var(--ui-text-muted);
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    text-align: left;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .analysis-command-bar__depth-option:hover {
+    color: var(--ui-text);
+    background: var(--ui-surface-2);
+    border-color: var(--ui-border-strong);
+  }
+
+  .analysis-command-bar__depth-option.active {
+    color: var(--ui-accent);
+    background: var(--ui-accent-soft);
+    border-color: var(--ui-accent);
+  }
+
+  .analysis-command-bar__depth-option-value {
+    font-family: var(--ui-font-mono);
+    font-size: 0.875rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .analysis-command-bar__depth-option-label {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 0.5625rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .analysis-command-bar__depth-help {
+    display: flex;
+    gap: 0.375rem;
+    align-items: baseline;
+    min-height: 1.875rem;
+    margin: 0.625rem 0 0;
+    padding: 0.5rem 0.625rem;
+    color: var(--ui-text-muted);
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 650;
+    line-height: 1.25;
+  }
+
+  .analysis-command-bar__depth-help span {
+    flex: 0 0 auto;
+    color: var(--ui-text);
+    font-size: 0.625rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .analysis-command-bar__depth-custom {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    margin-top: 0.75rem;
+  }
+
+  .analysis-command-bar__depth-slider {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    height: 1.25rem;
+    margin: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    --analysis-depth-fill: 0%;
+  }
+
+  .analysis-command-bar__depth-slider::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: linear-gradient(
+      to right,
+      var(--ui-accent) 0%,
+      var(--ui-accent) var(--analysis-depth-fill),
+      var(--ui-border-strong) var(--analysis-depth-fill),
+      var(--ui-border-strong) 100%
+    );
+  }
+
+  .analysis-command-bar__depth-slider::-moz-range-track {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--ui-border-strong);
+  }
+
+  .analysis-command-bar__depth-slider::-moz-range-progress {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--ui-accent);
+  }
+
+  .analysis-command-bar__depth-slider::-webkit-slider-thumb {
+    width: 0.875rem;
+    height: 0.875rem;
+    margin-top: -0.3125rem;
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--ui-accent);
+    border: 2px solid var(--ui-panel);
+    border-radius: 999px;
+  }
+
+  .analysis-command-bar__depth-slider::-moz-range-thumb {
+    width: 0.875rem;
+    height: 0.875rem;
+    background: var(--ui-accent);
+    border: 2px solid var(--ui-panel);
+    border-radius: 999px;
+  }
+
+  .analysis-command-bar__depth-input {
+    width: 5.5rem;
+    min-height: 2rem;
+    padding: 0.375rem 0.5rem;
+    color: var(--ui-text);
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    font-family: var(--ui-font-mono);
+    font-size: 0.8125rem;
+    font-weight: 800;
+    text-align: right;
+  }
+
+  .analysis-command-bar__depth-input:focus {
+    border-color: var(--ui-accent);
+    outline: none;
+  }
+
+  .analysis-command-bar__depth-scale {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.25rem;
+    color: var(--ui-text-faint);
+    font-family: var(--ui-font-mono);
+    font-size: 0.625rem;
+  }
+
+  .analysis-command-bar__progress {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    background: var(--ui-surface-2);
+  }
+
+  .analysis-command-bar__progress-fill {
+    display: block;
+    height: 100%;
+    background: var(--ui-accent);
+    transition: width 0.2s ease-out;
+  }
+
+  .analysis-command-bar__progress-caption {
+    display: flex;
+    grid-column: 1 / -1;
+    justify-content: center;
+    margin-top: -0.125rem;
+    color: var(--ui-text-faint);
+    font-family: var(--ui-font-mono);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+  }
+
+  .analysis-command-bar__sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  @media (max-width: 900px) {
+    .analysis-command-bar {
+      grid-template-columns: 1fr;
+      align-items: stretch;
+      gap: 0.5rem;
+      min-height: 0;
+      margin-bottom: 0.5rem;
+    }
+
+    .analysis-command-bar__actions,
+    .analysis-command-bar__metrics {
+      flex-wrap: nowrap;
+      justify-content: flex-start;
+      overflow-x: auto;
+      scrollbar-width: none;
+      overscroll-behavior-x: contain;
+    }
+
+    /* The strip owns the scroll affordances above (is-scrollable /
+       has-overflow-*), which a wrapping grid defeats: three stats fall into a
+       ragged 2 + 1 block that strands the bar's second column empty. Lay the
+       readouts out as one scrollable row across the full bar instead. */
+    .analysis-command-bar__metrics {
+      display: flex;
+      grid-column: 1 / -1;
+      scroll-padding-inline: 0 1rem;
+      scroll-snap-type: x proximity;
+    }
+
+    .analysis-command-bar__metric {
+      flex: 0 0 auto;
+      min-width: 4.5rem;
+      scroll-snap-align: start;
+    }
+
+    /* A single row needs no rule before the leading stat. */
+    .analysis-command-bar__metrics > .analysis-command-bar__metric:first-child {
+      border-left: none;
+    }
+
+    .analysis-command-bar__actions.is-scrollable,
+    .analysis-command-bar__metrics.is-scrollable {
+      padding-right: 1.25rem;
+    }
+
+    .analysis-command-bar__actions.has-overflow-right:not(.has-overflow-left),
+    .analysis-command-bar__metrics.has-overflow-right:not(.has-overflow-left) {
+      -webkit-mask-image: linear-gradient(
+        to right,
+        #000 calc(100% - 1.25rem),
+        transparent
+      );
+      mask-image: linear-gradient(
+        to right,
+        #000 calc(100% - 1.25rem),
+        transparent
+      );
+    }
+
+    .analysis-command-bar__actions.has-overflow-left:not(.has-overflow-right),
+    .analysis-command-bar__metrics.has-overflow-left:not(.has-overflow-right) {
+      -webkit-mask-image: linear-gradient(to right, transparent, #000 1.25rem);
+      mask-image: linear-gradient(to right, transparent, #000 1.25rem);
+    }
+
+    .analysis-command-bar__actions.has-overflow-left.has-overflow-right,
+    .analysis-command-bar__metrics.has-overflow-left.has-overflow-right {
+      -webkit-mask-image: linear-gradient(
+        to right,
+        transparent,
+        #000 1.25rem,
+        #000 calc(100% - 1.25rem),
+        transparent
+      );
+      mask-image: linear-gradient(
+        to right,
+        transparent,
+        #000 1.25rem,
+        #000 calc(100% - 1.25rem),
+        transparent
+      );
+    }
+
+    .analysis-command-bar__actions::-webkit-scrollbar,
+    .analysis-command-bar__metrics::-webkit-scrollbar {
+      display: none;
+    }
+
+    .analysis-command-bar__button {
+      flex: 0 0 auto;
+    }
+  }
+
+  @media (max-width: 1023px), (max-height: 499px) {
+    .analysis-command-bar__button,
+    .analysis-command-bar__depth-close,
+    .analysis-command-bar__depth-input {
+      min-height: 44px;
+    }
+
+    .analysis-command-bar__button--dismiss {
+      min-width: 44px;
+    }
+
+    .analysis-command-bar__depth-close {
+      width: 44px;
+      height: 44px;
+    }
+
+    .analysis-command-bar__depth-option {
+      min-height: 44px;
+    }
+
+    .analysis-command-bar__depth-slider {
+      height: 44px;
+    }
+
+    .analysis-command-bar__depth-popover {
+      position: fixed;
+      top: max(4.75rem, calc(env(safe-area-inset-top) + 0.75rem));
+      right: max(0.75rem, env(safe-area-inset-right));
+      bottom: calc(
+        var(--mobile-tabbar-height) +
+          var(--mobile-bottom-controls-height, 0px) +
+          max(0.75rem, env(safe-area-inset-bottom))
+      );
+      left: max(0.75rem, env(safe-area-inset-left));
+      width: auto;
+      max-height: none;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .analysis-command-bar {
+      z-index: 30;
+      width: 100%;
+      padding: 0.375rem;
+      border-radius: 6px;
+    }
+
+    /* Keep the state readable while giving the scrollable controls enough of a
+       preview to make their horizontal affordance obvious on a phone. */
+    .analysis-command-bar-slot .analysis-command-bar {
+      grid-template-columns: 4.75rem minmax(6rem, 1fr) minmax(6.5rem, 36vw);
+      column-gap: 0.25rem;
+    }
+
+    /* Ready state is already represented by the engine indicator in the phone
+       header. Reclaim that duplicate status column for readable metrics and the
+       two primary analysis actions; fallback and error states remain visible. */
+    .analysis-command-bar-slot
+      .analysis-command-bar:has(> .analysis-command-bar__status--header-duplicate) {
+      grid-template-columns: minmax(0, 1fr) minmax(9.5rem, 46vw);
+    }
+
+    .analysis-command-bar-slot .analysis-command-bar__status--header-duplicate {
+      display: none;
+    }
+
+    .analysis-command-bar-slot .analysis-command-bar__metrics {
+      gap: 0.125rem;
+    }
+
+    /* The metric strip scrolls horizontally here, so the leading stats only
+       need a narrow floor — sizing them to content keeps readouts like
+       "50.9%" or "B+10.5" from being ellipsised inside a fixed-width lane. */
+    .analysis-command-bar-slot .analysis-command-bar__metric:nth-child(-n + 2) {
+      flex: 0 0 auto;
+      min-width: 3.5rem;
+      padding-inline: 0.25rem;
+    }
+
+    .analysis-command-bar-slot
+      .analysis-command-bar:has(> .analysis-command-bar__status--header-duplicate)
+      .analysis-command-bar__metric:nth-child(-n + 2) {
+      flex-basis: auto;
+      min-width: 3rem;
+      padding-inline: 0.25rem;
+    }
+
+    .analysis-command-bar-slot
+      .analysis-command-bar:has(> .analysis-command-bar__status--header-duplicate)
+      .analysis-command-bar__metric:nth-child(3) {
+      flex-basis: auto;
+      min-width: 3.5rem;
+      padding-inline: 0.25rem;
+    }
+
+    .analysis-command-bar__label-full {
+      display: none;
+    }
+
+    .analysis-command-bar__label-compact {
+      display: inline;
+    }
+
+    .analysis-command-bar__status-detail {
+      display: none;
+    }
+
+    .analysis-command-bar-slot
+      .analysis-command-bar:has(.analysis-command-bar__status-copy) {
+      grid-template-columns: 6.25rem minmax(5rem, 1fr) minmax(6.5rem, 32vw);
+    }
+
+    .analysis-command-bar__metric {
+      padding: 0.25rem 0.375rem;
+    }
+
+    .analysis-command-bar__value {
+      font-size: 0.875rem;
+    }
+
+    .analysis-command-bar__label {
+      font-size: 0.5625rem;
+    }
+
+    .analysis-command-bar__button {
+      padding-inline: 0.5rem;
+      font-size: 0.6875rem;
+    }
+
+    .analysis-command-bar__depth-popover {
+      padding: 0.625rem;
+    }
+
+    .notification-toast-region--below-command-bar {
+      top: 12.5rem;
+    }
+
+    .analysis-command-bar__depth-options {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .analysis-command-bar__depth-help {
+      flex-direction: column;
+      gap: 0.125rem;
+      min-height: 3rem;
+      font-size: 0.6875rem;
+    }
+  }
+
+  @media (max-width: 360px) {
+    .analysis-command-bar-slot .analysis-command-bar {
+      grid-template-columns: 4rem minmax(6rem, 1fr) minmax(6.5rem, 36vw);
+    }
+  }
+
+  .library-tree {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* A mainline game lays the move tree out as a single row across the top of
+     its pane, which is exactly where this bar sits. At height: 0 it took no
+     flow, so its buttons landed on that row and swallowed a stretch of moves —
+     five of thirty-four in the desktop sidebar, seven on a phone, where there
+     is no hover to reveal what is underneath. Give the bar its own band. Both
+     panes are content-sized under a cap, so they simply grow by its height. */
+  .move-tree-floating-controls {
+    position: sticky;
+    top: 0.375rem;
+    right: 0.375rem;
+    z-index: 8;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.25rem;
+    height: auto;
+    padding-right: 0.375rem;
+    padding-bottom: 0.375rem;
+    pointer-events: none;
+  }
+
+  .move-tree-control-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    color: var(--ui-text-muted);
+    background: color-mix(in srgb, var(--ui-panel) 94%, transparent);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
+    pointer-events: auto;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .move-tree-control-button:hover,
+  .move-tree-control-button.active {
+    color: var(--ui-accent);
+    background: var(--ui-accent-soft);
+    border-color: var(--ui-accent);
+  }
+
+  /* The mobile move list is one 44px row per move using about a third of the
+     phone's width, so a 250-move game ran to eighteen screens of scrolling.
+     Two moves per row halves that and spends the empty two thirds, while each
+     cell stays a comfortable half-width tap target. Moves alternate, so the
+     left column reads black and the right white, the way a kifu does. */
+  .move-tree-list-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    /* The list wrapper is min-h-full, so the grid default (align-content:
+       stretch) inflated every auto row to fill the scroll region: a six-move
+       game rendered 166px-tall rows instead of the 44px they collapse to once
+       the list is long enough to scroll. Pack the rows at the top instead. */
+    align-content: start;
+  }
+
+  .move-tree-list-split > button {
+    min-width: 0;
+    border-bottom: 1px solid var(--ui-border);
+  }
+
+  .move-tree-list-split > button:nth-child(odd) {
+    border-right: 1px solid var(--ui-border);
+  }
+
+  .move-tree-list-split-full {
+    grid-column: 1 / -1;
+    border-right: 0;
+  }
+
+  .move-tree-empty-state {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem 3.25rem 0.5rem;
+    color: var(--ui-text-muted);
+    text-align: center;
+    pointer-events: none;
+  }
+
+  .move-tree-empty-state-content {
+    display: flex;
+    max-width: 17rem;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+  }
+
+  .move-tree-empty-state-content > svg {
+    display: none;
+    color: var(--ui-accent);
+    opacity: 0.78;
+  }
+
+  .move-tree-empty-state-title {
+    color: var(--ui-text);
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  .move-tree-empty-state-content p {
+    font-size: 0.6875rem;
+    line-height: 1.3;
+  }
+
+  .move-tree-empty-state-action {
+    min-height: 2.75rem;
+    margin-top: 0.35rem;
+    padding: 0 1rem;
+    color: var(--ui-accent);
+    background: var(--ui-accent-soft);
+    border: 1px solid color-mix(in srgb, var(--ui-accent) 58%, var(--ui-border));
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    pointer-events: auto;
+  }
+
+  .move-tree-empty-state-action:hover {
+    color: var(--ui-text);
+    border-color: var(--ui-accent);
+  }
+
+  @media (max-width: 1023px), (max-height: 499px) {
+    .move-tree-empty-state {
+      padding: 4.5rem 1.5rem 1.5rem;
+    }
+
+    .move-tree-empty-state-content {
+      gap: 0.45rem;
+    }
+
+    .move-tree-empty-state-content > svg {
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+
+    .move-tree-empty-state-title {
+      font-size: 0.875rem;
+    }
+
+    .move-tree-empty-state-content p {
+      font-size: 0.75rem;
+      line-height: 1.45;
+    }
+
+    .move-tree-floating-controls {
+      top: 0.5rem;
+      right: 0.5rem;
+      gap: 0.375rem;
+      padding-right: 0.5rem;
+      padding-bottom: 0.5rem;
+    }
+
+    .move-tree-control-button {
+      width: 44px;
+      height: 44px;
+    }
+  }
+
+  @media (max-height: 520px) and (orientation: landscape) {
+    .move-tree-empty-state {
+      padding: 0.75rem 3rem 0.5rem;
+    }
+
+    .move-tree-empty-state-content {
+      gap: 0.15rem;
+    }
+
+    .move-tree-empty-state-content > svg {
+      display: none;
+    }
+
+    .move-tree-empty-state-title {
+      font-size: 0.8125rem;
+    }
+
+    .move-tree-empty-state-content p {
+      font-size: 0.6875rem;
+      line-height: 1.3;
+    }
+
+    .move-tree-empty-state-action {
+      margin-top: 0.15rem;
+    }
+  }
+
+  .move-tree-node-marker {
+    pointer-events: none;
+    stroke: var(--ui-panel);
+    stroke-width: 1.25;
+  }
+
+  .move-tree-node-marker.note {
+    fill: var(--ui-warning);
+  }
+
+  .move-tree-node-marker.analysis {
+    fill: var(--ui-accent);
+  }
+
+  .move-tree-node-marker.mistake {
+    fill: var(--ui-danger);
+  }
+
+  .move-tree-node-marker.blunder {
+    fill: #dc2626;
+  }
+
+  .move-tree-node-marker.best {
+    fill: #22d3ee;
+  }
+
+  .move-tree-node-marker.setup {
+    fill: #a855f7;
+  }
+
+  .move-tree-node-halo-best {
+    fill: none;
+    stroke: #22d3ee;
+    stroke-width: 1.75;
+    opacity: 0.9;
+  }
+
+  .move-tree-keyboard-focus {
+    fill: none;
+    stroke: var(--ui-accent);
+    stroke-width: 1.75;
+    stroke-dasharray: 2 2;
+    pointer-events: none;
+  }
+
+  .move-tree-minimap {
+    position: sticky;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    z-index: 7;
+    display: flex;
+    justify-content: flex-end;
+    height: 0;
+    padding-right: 0.5rem;
+    pointer-events: none;
+  }
+
+  .move-tree-minimap svg {
+    cursor: crosshair;
+    pointer-events: auto;
+    filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.3));
+  }
+
+  .move-tree-minimap svg:focus-visible {
+    outline: 2px solid var(--ui-accent);
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
+
+  .move-tree-minimap-bg {
+    fill: color-mix(in srgb, var(--ui-panel) 92%, transparent);
+    stroke: var(--ui-border-strong);
+    stroke-width: 1;
+  }
+
+  .move-tree-minimap-edge {
+    fill: none;
+    stroke: var(--ui-text-faint);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.65;
+  }
+
+  .move-tree-minimap-node {
+    stroke-width: 1.5;
+  }
+
+  .move-tree-minimap-node.root {
+    fill: none;
+    stroke: var(--ui-text-muted);
+  }
+
+  .move-tree-minimap-node.black {
+    fill: #05070a;
+    stroke: #dbeafe;
+  }
+
+  .move-tree-minimap-node.white {
+    fill: #f8fafc;
+    stroke: #020617;
+  }
+
+  .move-tree-minimap-node.current {
+    stroke: var(--ui-accent);
+    stroke-width: 3;
+  }
+
+  .move-tree-minimap-viewport {
+    fill: color-mix(in srgb, var(--ui-accent) 16%, transparent);
+    stroke: var(--ui-accent);
+    stroke-width: 1.5;
+  }
+
+  .game-report-player-swatch--black {
+    background: #05070a;
+    border-color: color-mix(
+      in srgb,
+      var(--ui-text-muted) 72%,
+      var(--ui-border)
+    );
+  }
+
+  .game-report-player-swatch--white {
+    background: #f8fafc;
+    border-color: color-mix(in srgb, var(--ui-border-strong) 76%, #020617);
+  }
+
+  .game-report-histogram-swatch {
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 999px;
+  }
+
+  .game-report-histogram-bar--black {
+    background: color-mix(in srgb, #05070a 88%, var(--ui-surface));
+  }
+
+  .game-report-histogram-bar--white {
+    background: color-mix(in srgb, #f8fafc 70%, var(--ui-text-muted));
+  }
+
+  .library-tree-node {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 7px;
+    border-radius: 4px;
+    cursor: pointer;
+    min-width: 0;
+    user-select: none;
+    font-size: 13px;
+    color: var(--ui-text);
+    transition: background 0.1s ease;
+  }
+
+  .library-tree-node:hover {
+    background: var(--ui-surface-2);
+  }
+
+  .library-tree-node.selected {
+    background: var(--ui-accent-soft);
+    color: var(--ui-accent);
+  }
+
+  .library-tree-node.loaded {
+    position: relative;
+    background: var(--ui-success-soft);
+  }
+
+  .library-tree-node.loaded:hover {
+    background: var(--ui-success-soft);
+  }
+
+  .library-tree-node.loaded.dirty,
+  .library-tree-node.loaded.dirty:hover {
+    background: var(--ui-warning-soft);
+  }
+
+  .library-tree-node.loaded::before {
+    content: '▶';
+    position: absolute;
+    left: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 8px;
+    color: var(--ui-success);
+  }
+
+  .library-tree-node.loaded.dirty::before {
+    color: var(--ui-warning);
+  }
+
+  .library-tree-node.has-loaded {
+    position: relative;
+  }
+
+  .library-tree-node.has-loaded::after {
+    content: '';
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--ui-success);
+    opacity: 0.7;
+  }
+
+  .library-tree-node.has-loaded-dirty::after {
+    width: 7px;
+    height: 7px;
+    background: var(--ui-warning);
+    opacity: 0.95;
+  }
+
+  .library-tree-node.drop-target {
+    background: var(--ui-accent-soft);
+    outline: 2px dashed var(--ui-accent);
+    outline-offset: -2px;
+  }
+
+  .library-tree-node-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ui-text-muted);
+  }
+
+  .library-tree-node.loaded .library-tree-node-icon {
+    color: var(--ui-success);
+  }
+
+  .library-tree-node.loaded.dirty .library-tree-node-icon {
+    color: var(--ui-warning);
+  }
+
+  .library-tree-node.loaded .library-tree-node-name {
+    font-weight: 600;
+  }
+
+  .library-tree-node.loaded.selected {
+    background: var(--ui-success-soft);
+    color: var(--ui-success);
+  }
+
+  .library-tree-node.has-loaded .library-tree-node-icon {
+    color: var(--ui-success);
+    opacity: 0.7;
+  }
+
+  .library-tree-node.has-loaded-dirty .library-tree-node-icon {
+    color: var(--ui-warning);
+    opacity: 0.95;
+  }
+
+  .library-tree-node-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .library-tree-node-meta {
+    flex-shrink: 0;
+    margin-left: auto;
+    padding-left: 8px;
+    font-size: 11px;
+    color: var(--ui-text-muted);
+  }
+
+  /* A file row's name and meta line cannot share one line in a 320px panel.
+     Side by side the meta refused to shrink, so the name — the only thing that
+     says which game a row is — was squeezed to between 0 and 29px on every one
+     of the seeded pro games, and the rows with a result tag overflowed the
+     panel by 25px on top of that. Stack them the way the mobile shell already
+     does: the name takes the full width on the first line, and the meta
+     truncates under it. */
+  .library-tree-node[data-library-row='file'] {
+    display: grid;
+    grid-template-columns: auto 16px minmax(0, 1fr) auto auto;
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: 6px;
+    row-gap: 1px;
+  }
+
+  .library-tree-node[data-library-row='file'] .library-tree-node-select {
+    grid-column: 1;
+    grid-row: 1 / 3;
+  }
+
+  .library-tree-node[data-library-row='file'] .library-tree-node-icon {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .library-tree-node[data-library-row='file'] .library-tree-node-name {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .library-tree-node[data-library-row='file'] .library-tree-node-meta {
+    grid-column: 3;
+    grid-row: 2;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .library-tree-node[data-library-row='file'] .library-dirty-indicator {
+    grid-column: 4;
+    grid-row: 1 / 3;
+  }
+
+  .library-tree-node[data-library-row='file'] .library-tree-node-actions {
+    grid-column: 5;
+    grid-row: 1 / 3;
+  }
+
+  .library-dirty-indicator {
+    flex-shrink: 0;
+    border: 1px solid var(--ui-warning);
+    border-radius: 4px;
+    background: var(--ui-warning-soft);
+    color: var(--ui-warning);
+    padding: 1px 5px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  /* Collapsed to zero width (not display:none) so the row name gets the space
+     while the buttons stay tabbable; focus-within re-expands them. */
+  .library-tree-node-actions {
+    display: inline-flex;
+    gap: 2px;
+    width: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+  }
+
+  .library-tree-node:hover .library-tree-node-actions,
+  .library-tree-node:focus-within .library-tree-node-actions {
+    width: auto;
+    opacity: 1;
+  }
+
+  .library-tree-node-action {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    color: var(--ui-text-muted);
+    background: transparent;
+  }
+
+  .library-tree-node-action:hover {
+    background: var(--ui-surface-2);
+    color: var(--ui-text);
+  }
+
+  .library-tree-node-action.danger:hover {
+    color: var(--ui-danger);
+  }
+
+  .library-tree-node-more {
+    display: none;
+  }
+
+  .library-tree-node-select {
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    color: var(--ui-text-muted);
+    opacity: 0;
+    transition: opacity 0.1s ease;
+  }
+
+  .library-tree-node-select.is-visible,
+  .library-tree-node:hover .library-tree-node-select,
+  .library-tree-node:focus-within .library-tree-node-select {
+    opacity: 1;
+  }
+
+  /* The glyph stays 14px; the button grows to the 24x24 floor, which the 28px
+     tree row already has room for. */
+  .library-tree-node-arrow {
+    width: 24px;
+    height: 24px;
+    margin: 0 -5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ui-text-muted);
+    transition: transform 0.15s ease;
+  }
+
+  .library-tree-node-arrow.expanded {
+    transform: rotate(90deg);
+  }
+
+  .library-context-menu {
+    position: fixed;
+    z-index: 90;
+    min-width: 220px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 5px;
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    background: var(--ui-panel);
+    box-shadow: 0 12px 28px rgb(0 0 0 / 35%);
+  }
+
+  .library-context-menu-header {
+    padding: 5px 8px 6px;
+    color: var(--ui-text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .library-context-menu-item {
+    display: flex;
+    width: 100%;
+    min-height: 28px;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    color: var(--ui-text);
+    font-size: 13px;
+    line-height: 1.2;
+    text-align: left;
+  }
+
+  .library-context-menu-item:hover,
+  .library-context-menu-item:focus-visible {
+    background: var(--ui-surface-2);
+    outline: none;
+  }
+
+  .library-context-menu-item svg {
+    flex-shrink: 0;
+    color: var(--ui-text-muted);
+  }
+
+  .library-context-menu-item.danger {
+    color: var(--ui-danger);
+  }
+
+  .library-context-menu-item.danger svg {
+    color: var(--ui-danger);
+  }
+
+  .library-context-menu-separator {
+    height: 1px;
+    margin: 5px 3px;
+    background: var(--ui-border);
+  }
+
+  .library-stats {
+    padding: 6px 10px;
+    border-top: 1px solid var(--ui-border);
+    color: var(--ui-text-muted);
+    font-size: 11px;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .manual-score-launch,
+  .manual-score-panel {
+    position: absolute;
+    left: 12px;
+    top: 12px;
+    z-index: 28;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 8px;
+    color: var(--ui-text);
+    background: color-mix(in srgb, var(--ui-panel) 94%, transparent);
+    box-shadow: 0 14px 34px rgb(0 0 0 / 32%);
+    backdrop-filter: blur(12px);
+  }
+
+  .manual-score-launch {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 34px;
+    padding: 7px 10px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .manual-score-offset {
+    top: var(--board-tool-offset-y, 9rem);
+  }
+
+  .manual-score-launch:hover:not(:disabled) {
+    background: var(--ui-surface-2);
+  }
+
+  .manual-score-shortcut {
+    margin-left: 2px;
+    border: 1px solid var(--ui-border);
+    border-radius: 5px;
+    padding: 1px 5px;
+    color: var(--ui-text-muted);
+    background: var(--ui-surface);
+    font:
+      700 10px/1.4 ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      'Liberation Mono',
+      'Courier New',
+      monospace;
+  }
+
+  .manual-score-launch:disabled {
+    opacity: 0.48;
+    cursor: not-allowed;
+  }
+
+  @media (max-width: 1023px), (max-height: 499px) {
+    /* Launchers share the bottom edge with the Edit button on mobile (compact
+       bottom bars; the board stays fully visible), matching where the active
+       score bar docks. Bottom anchoring also makes the command-bar top offset
+       irrelevant, hence the .manual-score-offset override. */
+    .manual-score-launch,
+    .manual-score-launch.manual-score-offset {
+      top: auto;
+      bottom: 12px;
+      min-height: 44px;
+      padding: 9px 12px;
+    }
+  }
+
+  .manual-score-panel {
+    width: min(280px, calc(100vw - 24px));
+    overflow: hidden;
+  }
+
+  .manual-score-docked {
+    position: relative;
+    left: auto;
+    top: auto;
+    z-index: auto;
+    background: var(--ui-panel);
+    box-shadow: 0 2px 10px rgb(0 0 0 / 12%);
+    backdrop-filter: none;
+  }
+
+  .manual-score-panel.manual-score-docked {
+    width: min(320px, calc(100vw - 24px));
+    max-height: min(420px, 60vh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .manual-score-header,
+  .manual-score-actions,
+  .manual-score-method,
+  .manual-score-totals > div,
+  .manual-score-breakdown > div,
+  .manual-score-details-toggle {
+    display: flex;
+    align-items: center;
+  }
+
+  .manual-score-header {
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 34px;
+    padding: 7px 8px 7px 10px;
+    border-bottom: 1px solid var(--ui-border);
+  }
+
+  .manual-score-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .manual-score-count {
+    margin-left: auto;
+    padding: 2px 6px;
+    border: 1px solid var(--ui-border);
+    border-radius: 999px;
+    color: var(--ui-text-muted);
+    background: var(--ui-surface);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .manual-score-icon {
+    display: inline-flex;
+    width: 26px;
+    height: 26px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    color: var(--ui-text-muted);
+  }
+
+  .manual-score-icon:hover {
+    color: var(--ui-text);
+    background: var(--ui-surface-2);
+  }
+
+  .manual-score-method {
+    box-sizing: border-box;
+    width: calc(100% - 20px);
+    gap: 4px;
+    margin: 8px 10px 0;
+    padding: 3px;
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    background: var(--ui-surface);
+  }
+
+  .manual-score-method button {
+    display: inline-flex;
+    min-height: 26px;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--ui-text-muted);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .manual-score-method button:hover:not(:disabled) {
+    color: var(--ui-text);
+    background: var(--ui-surface-2);
+  }
+
+  .manual-score-method button.active {
+    color: var(--ui-accent);
+    background: var(--ui-accent-soft);
+    border-color: var(--ui-accent);
+  }
+
+  .manual-score-method button:disabled:not(.active) {
+    cursor: not-allowed;
+    opacity: 0.48;
+  }
+
+  .manual-score-method button.active:disabled {
+    cursor: default;
+    opacity: 1;
+  }
+
+  .manual-score-result {
+    display: grid;
+    gap: 3px;
+    margin: 10px 10px 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    text-align: center;
+    font-size: 22px;
+    font-weight: 900;
+    line-height: 1.1;
+  }
+
+  .manual-score-result small {
+    display: block;
+    overflow: hidden;
+    color: currentcolor;
+    font-size: 11px;
+    font-weight: 800;
+    opacity: 0.72;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .manual-score-estimate-mark {
+    margin-right: 5px;
+    opacity: 0.75;
+  }
+
+  .manual-score-result.black {
+    color: #f8fafc;
+    background: #101827;
+  }
+
+  .manual-score-result.white {
+    color: #0f172a;
+    background: #f8fafc;
+  }
+
+  .manual-score-result.jigo {
+    color: var(--ui-text);
+    background: var(--ui-surface-2);
+  }
+
+  .manual-score-status {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+    padding: 0 10px 8px;
+  }
+
+  .manual-score-status > div {
+    min-width: 0;
+    padding: 5px 6px;
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    background: var(--ui-surface);
+  }
+
+  .manual-score-status span,
+  .manual-score-status b {
+    display: block;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .manual-score-status span {
+    color: var(--ui-text-faint);
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 1.2;
+    text-transform: uppercase;
+  }
+
+  .manual-score-status b {
+    margin-top: 2px;
+    color: var(--ui-text);
+    font-family: var(--ui-font-mono);
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.2;
+  }
+
+  .manual-score-totals {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+    padding: 0 10px 8px;
+  }
+
+  .manual-score-totals > div {
+    gap: 7px;
+    min-width: 0;
+    padding: 5px 7px;
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    background: var(--ui-surface);
+    font-size: 12px;
+  }
+
+  .manual-score-totals strong {
+    margin-left: auto;
+    font-family: var(--ui-font-mono);
+    font-size: 13px;
+  }
+
+  .manual-score-stone {
+    width: 12px;
+    height: 12px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    border: 1px solid var(--ui-border-strong);
+  }
+
+  .manual-score-stone.black {
+    background: #111827;
+  }
+
+  .manual-score-stone.white {
+    background: #f8fafc;
+  }
+
+  .manual-score-details {
+    border-top: 1px solid var(--ui-border);
+  }
+
+  .manual-score-details-toggle {
+    width: 100%;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 10px;
+    color: var(--ui-text-muted);
+    background: var(--ui-surface);
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .manual-score-details-toggle:hover {
+    color: var(--ui-text);
+    background: var(--ui-surface-2);
+  }
+
+  .manual-score-breakdown {
+    display: grid;
+    gap: 3px;
+    padding: 8px 10px;
+    color: var(--ui-text-muted);
+    font-size: 11px;
+  }
+
+  .manual-score-breakdown[hidden] {
+    display: none;
+  }
+
+  .manual-score-breakdown > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 42px 42px;
+    gap: 6px;
+  }
+
+  .manual-score-breakdown-header {
+    color: var(--ui-text-faint);
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+
+  .manual-score-breakdown b {
+    color: var(--ui-text);
+    font-family: var(--ui-font-mono);
+    font-weight: 700;
+    text-align: right;
+  }
+
+  .manual-score-breakdown .manual-score-muted {
+    color: var(--ui-text-faint);
+  }
+
+  .manual-score-actions {
+    gap: 6px;
+    padding: 8px 10px 10px;
+    border-top: 1px solid var(--ui-border);
+  }
+
+  .manual-score-actions button {
+    display: inline-flex;
+    min-height: 30px;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    color: var(--ui-text-muted);
+    background: var(--ui-surface);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .manual-score-actions button:hover {
+    color: var(--ui-text);
+    background: var(--ui-surface-2);
+  }
+
+  .manual-score-actions button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .manual-score-actions button:disabled:hover {
+    color: var(--ui-text-muted);
+    background: var(--ui-surface);
+  }
+
+  .manual-score-actions button.primary {
+    color: var(--ui-accent-contrast);
+    background: var(--ui-accent);
+    border-color: var(--ui-accent);
+  }
+
+  .manual-score-actions button.active {
+    color: var(--ui-accent);
+    border-color: var(--ui-accent);
+    background: var(--ui-accent-soft);
+  }
+
+  .manual-score-help {
+    border-top: 1px solid var(--ui-border);
+    padding: 0 10px 10px;
+    color: var(--ui-text-faint);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.35;
+    text-align: center;
+  }
+
+  /* Matches MOBILE_LAYOUT_MEDIA in src/utils/responsiveLayout.ts: the mobile
+     shell also runs on short, wide windows, and a width-only query left these
+     controls at their 26-31px desktop heights while the app was in touch mode. */
+  @media (max-width: 1023px), (max-height: 499px) {
+    .manual-score-panel {
+      box-sizing: border-box;
+      max-height: min(420px, calc(100vh - 80px));
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    .manual-score-header {
+      box-sizing: border-box;
+      min-height: 44px;
+      padding: 0 8px 0 10px;
+    }
+
+    .manual-score-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 6px;
+    }
+
+    .manual-score-method button,
+    .manual-score-details-toggle,
+    .manual-score-actions button {
+      min-height: 44px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .manual-score-launch,
+    .manual-score-panel {
+      left: 8px;
+    }
+
+    /* Only the panel gets a top here: the launcher is bottom-anchored by the
+       1023px rules above, and setting both edges stretches it into a
+       full-height strip beside the board. */
+    .manual-score-panel {
+      top: 8px;
+      width: min(270px, calc(100vw - 16px));
+    }
+
+    .manual-score-panel.manual-score-offset {
+      top: var(--board-tool-offset-y, 11.75rem);
+    }
+
+    .manual-score-result {
+      font-size: 19px;
+    }
+  }
+
+  /* Mobile compact scoring bar: dock full-width at the bottom and keep it slim so the
+     board stays visible/tappable. The per-player totals and territory status move behind
+     the Details expander; the result card + actions stay in view. */
+  .manual-score-panel.manual-score-compact {
+    left: 8px;
+    right: 8px;
+    top: auto;
+    bottom: 12px;
+    width: auto;
+    /* Cap to the board's reserved bottom zone so expanding Details scrolls inside the
+       bar instead of growing up over the board. */
+    max-height: min(18.5rem, calc(100vh - 7rem));
+  }
+
+  .manual-score-panel.manual-score-compact .manual-score-status,
+  .manual-score-panel.manual-score-compact .manual-score-totals,
+  .manual-score-panel.manual-score-compact .manual-score-help {
+    display: none;
+  }
+
+  .status-bar {
+    background: var(--ui-panel);
+    border-top: 1px solid var(--ui-border);
+    padding: 6px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    min-height: 28px;
+    z-index: 5;
+    width: 100%;
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 1024px) {
+    .status-bar {
+      display: none;
+    }
+  }
+
+  .mobile-safe-bottom {
+    padding-bottom: calc(
+      var(--mobile-tabbar-height) + var(--mobile-bottom-controls-height, 0px) +
+        var(--pwa-banner-height, 0px) + env(safe-area-inset-bottom)
+    );
+  }
+
+  .mobile-safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .mobile-safe-inset {
+    padding-top: env(safe-area-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  .mobile-home-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mobile-home-actions > button + button {
+    border-top: 1px solid var(--ui-border);
+  }
+
+  @media (max-height: 520px) and (orientation: landscape) {
+    [data-menu-header='true'] {
+      align-items: center !important;
+      margin-bottom: 8px !important;
+      padding-top: 4px !important;
+      padding-bottom: 4px !important;
+    }
+
+    [data-menu-build-link='true'],
+    [data-menu-recent='true'] {
+      display: none !important;
+    }
+
+    [data-menu-nav='true'] > :not([hidden]) ~ :not([hidden]) {
+      margin-top: 8px !important;
+    }
+
+    .mobile-home-actions > button {
+      min-height: 48px;
+      justify-content: center;
+      gap: 0 !important;
+      padding: 6px 8px !important;
+      text-align: center;
+    }
+
+    .mobile-home-action-icon,
+    .mobile-home-action-label-full,
+    .mobile-home-action-hint {
+      display: none !important;
+    }
+
+    .mobile-home-action-copy,
+    .mobile-home-action-label-compact {
+      display: block !important;
+    }
+
+    .mobile-home-main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-areas:
+        'summary summary'
+        'primary recent'
+        'manage recent';
+      align-items: start;
+      gap: 12px;
+    }
+
+    .mobile-home-summary {
+      grid-area: summary;
+    }
+
+    .mobile-home-actions--primary {
+      grid-area: primary;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin-top: 0;
+    }
+
+    .mobile-home-actions--primary > button:nth-child(2) {
+      border-top: 0;
+    }
+
+    .mobile-home-actions--primary > button:nth-child(even) {
+      border-left: 1px solid var(--ui-border);
+    }
+
+    .mobile-home-recent {
+      grid-area: recent;
+      margin-top: 0;
+    }
+
+    .mobile-home-manage {
+      grid-area: manage;
+      margin-top: 0;
+    }
+
+    .mobile-home-actions--secondary {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .mobile-home-actions--secondary > button:nth-child(2),
+    .mobile-home-actions--secondary > button:nth-child(3) {
+      border-top: 0;
+    }
+
+    .mobile-home-actions--secondary > button:not(:nth-child(3n + 1)) {
+      border-left: 1px solid var(--ui-border);
+    }
+  }
+
+  @media (min-width: 540px) and (max-height: 520px) and (orientation: landscape) {
+    .mobile-home-actions--primary {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .mobile-home-actions--primary > button {
+      border-left: 0;
+    }
+
+    .mobile-home-actions--primary > button:nth-child(3) {
+      border-top: 0;
+    }
+
+    .mobile-home-actions--primary > button:not(:nth-child(3n + 1)) {
+      border-left: 1px solid var(--ui-border);
+    }
+  }
+
+  .mobile-tabbar {
+    position: relative;
+    isolation: isolate;
+    z-index: 1;
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    min-height: calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom));
+  }
+
+  .mobile-tabbar-grid {
+    min-height: var(--mobile-tabbar-height);
+  }
+
+  /* Four short labels fit even at 320px; only short landscape viewports
+     (below) drop them to save height. */
+  @media (max-height: 520px) and (orientation: landscape) {
+    :root,
+    :root[data-ui-density='compact'],
+    :root[data-ui-density='comfortable'],
+    :root[data-ui-density='large'] {
+      --ui-bar-height: 52px;
+      --ui-bar-pad-y: 4px;
+      --ui-control-size: 44px;
+      --mobile-tabbar-height: 58px;
+    }
+
+    .mobile-tabbar-label {
+      display: none;
+    }
+
+    .mobile-tabbar button {
+      padding-top: 8px;
+      padding-bottom: 8px;
+    }
+
+    .manual-score-offset {
+      top: var(--board-tool-offset-y, 0.5rem);
+    }
+
+    .manual-score-panel.manual-score-offset {
+      top: 0.5rem;
+    }
+
+    .manual-score-panel {
+      max-height: calc(100vh - 5rem);
+    }
+  }
+
+  .status-bar-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .status-bar-left {
+    flex: 0 0 auto;
+    min-width: 100px;
+  }
+
+  .status-bar-right {
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+
+  .status-bar-text {
+    font-size: 12px;
+    color: var(--ui-text);
+    font-weight: 500;
+  }
+
+  .status-bar-matchup {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .status-bar-item {
+    font-size: 11px;
+    color: var(--ui-text-muted);
+  }
+
+  .status-player {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    border: 1px solid var(--ui-border-strong);
+    flex-shrink: 0;
+  }
+
+  .status-player-black {
+    background: #111;
+  }
+
+  .status-player-white {
+    background: #fff;
+  }
+
+  .status-bar-captures {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .status-bar-divider {
+    font-size: 11px;
+    color: var(--ui-text-muted);
+    opacity: 0.7;
+  }
+
+  .status-bar-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: var(--ui-text-muted);
+    background: transparent;
+    border: 1px solid var(--ui-border);
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    line-height: 1;
+    /* The game strip is 42px with 7px of padding, so a 28px control fills its
+       content box exactly and costs the strip no height. At 20px this was the
+       smallest target in the desktop shell, and it starts and stops the clock. */
+    min-height: 28px;
+    min-width: 28px;
+  }
+
+  .status-bar-button:hover {
+    color: var(--ui-text);
+    background: var(--ui-surface-2);
+    border-color: var(--ui-border-strong);
+  }
+
+  .status-bar-button:active {
+    transform: scale(0.98);
+  }
+
+  .status-bar-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .status-bar-button.danger {
+    color: var(--ui-danger);
+    border-color: var(--ui-danger);
+  }
+
+  @media (max-width: 1023px), (max-height: 499px) {
+    .status-bar-button {
+      min-width: 44px;
+      min-height: 44px;
+      border-radius: 6px;
+    }
+  }
+
+  .status-bar-timer {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* Below this the clock's own 44px pause target no longer fits the phone top
+     bar beside the menu, the analysis toggle and the three right-hand toggles.
+     Keep the reading — that is the whole point of the chip — and shed the
+     control, which is still one tap away in the Review tab's header. This has
+     to live in the components layer: `.status-bar-button` sets its display
+     here, and a layer outranks any specificity in an earlier one. */
+  /* Every other control in the phone top bar is a borderless icon, so the
+     status pill's outlined pause button read as the loudest thing up there. */
+  .mobile-top-timer .status-bar-button {
+    background: transparent;
+    border-color: transparent;
+  }
+
+  /* 380px was too generous a threshold: the reading itself is elastic, and a
+     wide one ("1:00 ×25") at the large density overran the 390px bar by 5px
+     even though the default "0:30 ×5" left 2px to spare. The chip is there to
+     be read; pause is one tap away in the Review tab's header, so shed the
+     control for every phone-width bar rather than tune a limit that a longer
+     time control can still walk past. */
+  @media (max-width: 430px) {
+    .mobile-top-timer .status-bar-button {
+      display: none;
+    }
+  }
+
+  /* Even the bare reading overruns the bar by 16px at 320px, and clipping the
+     menu or the analysis toggle would be the worse trade. The clock is still
+     in the Review tab's header on those screens. */
+  @media (max-width: 340px) {
+    .mobile-top-timer {
+      display: none;
+    }
+  }
+
+  /* The same trade, one bar over. The tree tab's panel header carries the back
+     chevron, first/last navigation and the tree/list toggle beside the clock —
+     it is crowded enough that it already sheds its own title — and the clock's
+     44px pause target pushed the reading off the right edge there: 341px of a
+     340px bar, and 21px over at 320px. The reading is the part worth keeping,
+     and pause stays one tap away on the Review tab, whose header carries only
+     the back chevron and the clock. Components layer for the same reason as
+     the rule above: `.status-bar-button` sets its display here. */
+  @media (max-width: 430px) {
+    .mobile-panel-header[data-mobile-panel-tab='tree'] .status-bar-button {
+      display: none;
+    }
+  }
+
+  .panel-toggle {
+    padding: 4px 6px;
+    border: none;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--ui-text-muted);
+    background: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .panel-toggle:hover {
+    color: var(--ui-text);
+    background: var(--ui-surface-2);
+  }
+
+  .panel-toggle.active {
+    color: var(--ui-text);
+    background: var(--ui-surface-2);
+  }
+
+  .ui-gap {
+    gap: var(--ui-gap);
+  }
+
+  .panel-scroll-region {
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .panel-compact-tree {
+    height: clamp(8.25rem, 18dvh, 11.25rem);
+    max-height: 180px;
+  }
+
+  /* Fill the panel instead of stopping at a fixed height. With a real library
+     the 240px cap showed seven rows and left roughly 410px of the panel blank
+     at 900px tall, so every game past the seventh lived behind a scroll of a
+     231px window. The mobile branch already sizes itself this way; the panel
+     scrolls if the estimate runs long, so erring large costs nothing. */
+  .panel-compact-list {
+    max-height: max(240px, calc(100dvh - 280px));
+  }
+
+  /* Compact density for the Analysis dashboard card (desktop docked panel).
+     Trims the shared panel paddings without affecting other panels. */
+  @media (min-width: 1024px) {
+    .analysis-panel-compact .panel-section-header {
+      padding: 5px 10px;
+    }
+
+    .analysis-panel-compact .panel-section-content {
+      padding: 6px 8px;
+    }
+
+    .analysis-panel-compact .panel-toolbar {
+      padding: 4px 6px;
+      min-height: 28px;
+    }
+
+    .analysis-panel-compact .panel-tab {
+      padding: 5px 10px;
+    }
+  }
+
+  .pwa-install-banner {
+    position: fixed;
+    left: auto;
+    right: max(12px, env(safe-area-inset-right));
+    bottom: calc(
+      var(--ui-bar-height) + var(--desktop-bottom-controls-height, 0px) +
+        max(12px, env(safe-area-inset-bottom))
+    );
+    z-index: 45;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    width: min(420px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    box-sizing: border-box;
+    margin: 0;
+    padding: 10px;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 8px;
+    color: var(--ui-text);
+    background: color-mix(in srgb, var(--ui-surface) 94%, transparent);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(14px);
+  }
+
+  .pwa-install-icon {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    color: var(--ui-accent);
+    background: var(--ui-accent-soft);
+  }
+
+  .pwa-install-title {
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+
+  .pwa-install-detail {
+    margin-top: 2px;
+    overflow: hidden;
+    color: var(--ui-text-muted);
+    font-size: 11px;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pwa-install-actions {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .pwa-install-primary,
+  .pwa-install-secondary {
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 6px;
+    padding: 0 12px;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .pwa-install-primary {
+    color: var(--ui-accent-contrast);
+    background: var(--ui-accent);
+  }
+
+  .pwa-install-secondary {
+    color: var(--ui-text-muted);
+    border: 1px solid var(--ui-border);
+    background: var(--ui-surface-2);
+  }
+
+  .pwa-install-primary:hover,
+  .pwa-install-secondary:hover {
+    filter: brightness(1.04);
+  }
+
+  .pwa-install-primary:disabled,
+  .pwa-install-secondary:disabled {
+    cursor: wait;
+    opacity: 0.65;
+    filter: none;
+  }
+
+  @media (max-width: 640px) {
+    .pwa-install-banner {
+      grid-template-columns: auto minmax(0, 1fr);
+      max-width: calc(100vw - 24px);
+    }
+
+    .pwa-install-actions {
+      grid-column: 1 / -1;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .pwa-install-primary,
+    .pwa-install-secondary {
+      min-height: 44px;
+    }
+
+    .pwa-install-detail {
+      white-space: normal;
+    }
+  }
+
+  @media (max-width: 1023px) {
+    .pwa-install-banner {
+      left: max(12px, env(safe-area-inset-left));
+      right: max(12px, env(safe-area-inset-right));
+      width: auto;
+      max-width: calc(100vw - 24px);
+      margin: 0 auto;
+      bottom: calc(
+        var(--mobile-tabbar-height) +
+          var(--mobile-bottom-controls-height, 0px) +
+          max(12px, env(safe-area-inset-bottom))
+      );
+    }
+
+    /* The mobile home overlay hides the tab bar and bottom controls, so the
+       banner sits on the screen edge instead of floating over the action list. */
+    :root[data-mobile-home='open'] .pwa-install-banner {
+      bottom: max(12px, env(safe-area-inset-bottom));
+    }
+  }
+
+  /* Horizontal control strip that scrolls rather than wraps. Hides the scrollbar
+     and fades the trailing edge so a clipped control reads as "scroll for more"
+     rather than broken; the padding keeps the last one clear of the fade once
+     scrolled to the end. */
+  .scroll-strip-x {
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-right: 1.25rem;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+  }
+
+  .scroll-strip-x::-webkit-scrollbar {
+    display: none;
+  }
+
+  .pro-games-featured {
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+
+  .pro-games-featured::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ui-border {
+    border-color: var(--ui-border);
+  }
+
+  .ui-border-strong {
+    border-color: var(--ui-border-strong);
+  }
+
+  .ui-text-muted {
+    color: var(--ui-text-muted);
+  }
+
+  .ui-text-faint {
+    color: var(--ui-text-faint);
+  }
+
+  .ui-accent {
+    color: var(--ui-accent);
+  }
+
+  .ui-accent-bg {
+    background: var(--ui-accent);
+    color: var(--ui-accent-contrast);
+  }
+
+  .ui-accent-soft {
+    background: var(--ui-accent-soft);
+    color: var(--ui-accent);
+    border-color: var(--ui-accent);
+  }
+
+  .ui-danger-soft {
+    background: var(--ui-danger-soft);
+    color: var(--ui-danger);
+    border-color: var(--ui-danger);
+  }
+
+  .ui-success-soft {
+    background: var(--ui-success-soft);
+    color: var(--ui-success);
+    border-color: var(--ui-success);
+  }
+
+  /* Mobile workspaces keep the board as the primary interaction surface. */
+  @media (max-width: 1023px), (max-height: 499px) {
+    .game-info-edit-header {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      margin-inline: -0.25rem;
+      padding: 0.25rem;
+      background: color-mix(in srgb, var(--ui-panel) 96%, transparent);
+      border-bottom: 1px solid var(--ui-border);
+      backdrop-filter: blur(8px);
+    }
+
+    .notification-toast-region,
+    .notification-toast-region--below-command-bar {
+      position: absolute;
+      inset: 0.5rem 0.5rem auto;
+      z-index: 40;
+      flex: 0 0 auto;
+      justify-content: center;
+      padding: 0;
+    }
+
+    .notification-toast-region--below-command-bar {
+      top: 4rem;
+    }
+
+    .notification-toast {
+      width: fit-content;
+      min-width: min(100%, 14rem);
+      max-width: min(30rem, calc(100% - 1rem));
+      min-height: 3rem;
+      padding: 0.125rem 0.5rem;
+      border-width: 1px 1px 1px 3px;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+      backdrop-filter: blur(8px);
+    }
+
+    .notification-toast-action,
+    .notification-toast-close {
+      width: 45px;
+      height: 45px;
+    }
+
+    /* Long game names can otherwise turn a routine confirmation into a tall
+       board-covering card. Two lines keep enough identifying context on phones;
+       the complete message remains available to assistive tech and via title. */
+    .notification-toast-info .notification-toast-message,
+    .notification-toast-success .notification-toast-message {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .analysis-command-bar {
+      gap: 0.25rem;
+      margin-bottom: 0;
+      padding: 0.25rem 0;
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    .analysis-command-bar__status {
+      padding-inline: 0.25rem;
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+    }
+
+    .analysis-command-bar__button {
+      background: transparent;
+      border-color: transparent;
+      border-radius: 4px;
+    }
+
+    /* A 44px touch target left the underline floating ~20px below its label,
+       reading as a stray rule rather than an on-state. A soft fill hugs the
+       chip and matches how the same toggles read on desktop. */
+    .analysis-command-bar__button.active {
+      background: var(--ui-accent-soft);
+      border-color: transparent;
+      box-shadow: none;
+    }
+
+    .candidate-pv-strip {
+      padding-right: 24px;
+      overscroll-behavior-x: contain;
+      scroll-padding-inline: 4px 24px;
+      scroll-snap-type: x proximity;
+      scrollbar-width: none;
+    }
+
+    /* In portrait a 19x19 board is width-limited, so the column has leftover
+       height that collected as a dead gap below the board — the board is
+       already biased to the top of its flex-1 slot on purpose. Move the
+       continuation tiles under the board there: the gap gets a use, and the tap
+       targets land in the thumb zone instead of above the board. The strip
+       occupies the same height either way, so this costs the board nothing.
+       Portrait only because landscape centres the board with no gap under it to
+       fill, and below ~520px tall the strip is hidden outright. Ordered rather
+       than moved in the JSX so it stays a direct child of .mobile-board-shell,
+       which that hide rule selects on. */
+    @media (orientation: portrait) {
+      .mobile-board-shell > .candidate-pv-strip {
+        order: 1;
+      }
+    }
+
+    .candidate-pv-strip.has-overflow-right:not(.has-overflow-left) {
+      -webkit-mask-image: linear-gradient(
+        to right,
+        #000 calc(100% - 24px),
+        transparent
+      );
+      mask-image: linear-gradient(
+        to right,
+        #000 calc(100% - 24px),
+        transparent
+      );
+    }
+
+    .candidate-pv-strip.has-overflow-left:not(.has-overflow-right) {
+      -webkit-mask-image: linear-gradient(to right, transparent, #000 24px);
+      mask-image: linear-gradient(to right, transparent, #000 24px);
+    }
+
+    .candidate-pv-strip.has-overflow-left.has-overflow-right {
+      -webkit-mask-image: linear-gradient(
+        to right,
+        transparent,
+        #000 24px,
+        #000 calc(100% - 24px),
+        transparent
+      );
+      mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+    }
+
+    .candidate-pv-strip::-webkit-scrollbar {
+      display: none;
+    }
+
+    .candidate-pv-tile {
+      min-height: 44px;
+      padding-inline: 12px;
+      scroll-snap-align: start;
+    }
+
+    .manual-score-panel.manual-score-compact {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      max-height: min(13rem, calc(100vh - 7rem));
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      background: var(--ui-panel);
+      box-shadow: 0 -8px 24px rgb(0 0 0 / 18%);
+      backdrop-filter: none;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-header,
+    .manual-score-panel.manual-score-compact .manual-score-details,
+    .manual-score-panel.manual-score-compact .manual-score-actions {
+      grid-column: 1 / -1;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-method {
+      width: auto;
+      margin: 6px 4px 6px 8px;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-result {
+      align-content: center;
+      margin: 6px 8px 6px 4px;
+      padding: 5px 8px;
+      font-size: 18px;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-details-toggle {
+      min-height: 44px;
+      padding-block: 5px;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-breakdown {
+      max-height: 8rem;
+      overflow-y: auto;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-actions {
+      position: sticky;
+      z-index: 2;
+      bottom: 0;
+      padding: 6px 8px 8px;
+      background: var(--ui-panel);
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-actions button {
+      min-height: 44px;
+    }
+
+    .library-tree-node[data-library-row='file'] {
+      grid-template-columns: 44px 16px minmax(0, 1fr) auto;
+      column-gap: 4px;
+      row-gap: 2px;
+      min-height: 50px;
+      padding-block: 4px;
+    }
+
+    .library-tree-node[data-library-row='file'] .library-tree-node-select {
+      width: 44px;
+      height: 44px;
+      opacity: 1;
+    }
+
+    .library-tree-node[data-library-row='file'] .library-tree-node-name {
+      width: 100%;
+    }
+
+    .library-tree-node[data-library-row='file'] .library-tree-node-actions {
+      display: none;
+    }
+
+    .library-tree-node[data-library-row='folder'] {
+      display: grid;
+      grid-template-columns: 44px 44px 16px minmax(0, 1fr) auto 44px;
+      align-items: center;
+      column-gap: 2px;
+      min-height: 52px;
+      padding-block: 4px;
+    }
+
+    .library-tree-node[data-library-row='folder'] .library-tree-node-arrow,
+    .library-tree-node[data-library-row='folder'] .library-tree-node-select,
+    .library-tree-node[data-library-row='folder'] .library-tree-node-more {
+      width: 44px;
+      height: 44px;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .library-tree-node[data-library-row='folder'] .library-tree-node-arrow {
+      grid-column: 1;
+    }
+
+    .library-tree-node[data-library-row='folder'] .library-tree-node-select {
+      grid-column: 2;
+      opacity: 1;
+    }
+
+    .library-tree-node[data-library-row='folder'] .library-tree-node-icon {
+      grid-column: 3;
+    }
+
+    .library-tree-node[data-library-row='folder'] .library-tree-node-name {
+      grid-column: 4;
+    }
+
+    .library-tree-node[data-library-row='folder'] .library-tree-node-meta {
+      grid-column: 5;
+      margin-left: 0;
+      padding-left: 4px;
+    }
+
+    .library-tree-node[data-library-row='folder'] .library-tree-node-actions {
+      display: none;
+    }
+
+    .library-tree-node[data-library-row='folder'] .library-tree-node-more {
+      display: inline-flex;
+      grid-column: 6;
+      color: var(--ui-text-muted);
+      border-radius: 6px;
+    }
+
+    .library-tree-node[data-library-row='folder'] .library-tree-node-more:hover,
+    .library-tree-node[data-library-row='folder']
+      .library-tree-node-more:focus-visible {
+      color: var(--ui-text);
+      background: var(--ui-surface-2);
+    }
+
+    .library-context-menu-item {
+      min-height: 44px;
+      padding: 10px 12px;
+    }
+
+    .settings-modal .settings-section {
+      border-right: 0;
+      border-left: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      padding-inline: 0;
+    }
+
+    /* Keyboard hints on a device with no keyboard. This rule already covered
+       the menu drawer and the shortcuts-modal footer; the command palette hid
+       its chips only below 360px, so every phone wider than that still showed
+       62 Ctrl+... labels. Same rule, same breakpoint. */
+    .mobile-shortcut-hint,
+    .command-palette-shortcut,
+    [data-mobile-tools-dialog='true'] button > .text-\[11px\].ui-text-faint {
+      display: none;
+    }
+
+    /* The drawer's actions sit two to a row, so each label gets about 117px of
+       text width at 390px. Seven of the nineteen wrapped onto a second line
+       there, and a wrapped cell stretches its whole row, so the grid came out
+       ragged and ~100px taller than its content — enough to push About and
+       Keyboard Shortcuts below the fold. Trimming the side padding and the
+       icon gap and taking the label down one step clears every wrap at 390px
+       and wider while leaving the 44px touch target untouched. */
+    [data-menu-action-grid] > button {
+      /* px-3 and gap-2 are Tailwind utilities, which win over this layer on
+         cascade order rather than specificity, so these two need the flag. */
+      padding-inline: 0.5rem !important;
+      font-size: 0.8125rem;
+    }
+
+    [data-menu-action-grid] > button > span {
+      gap: 0.375rem !important;
+    }
+
+    [data-mobile-tools-panel='true'] button,
+    [data-mobile-tools-panel='true'] select {
+      min-height: 44px !important;
+    }
+
+    [data-mobile-tools-action-grid='true'] > button {
+      border-bottom: 1px solid var(--ui-border);
+    }
+
+    [data-mobile-tools-action-grid='true'] > button:nth-child(odd) {
+      border-right: 1px solid var(--ui-border);
+    }
+
+    /* The default AI group has five actions. Let the final action finish the
+       row instead of leaving a button-sized hole on narrow phones. */
+    [data-mobile-tools-section='ai'] > button:last-child:nth-child(5) {
+      grid-column: 1 / -1;
+      border-right: 0;
+    }
+  }
+
+  @media (max-width: 480px) and (min-height: 700px) and (orientation: portrait) {
+    .notification-toast-region,
+    .notification-toast-region--below-command-bar {
+      top: auto;
+      bottom: 0.5rem;
+    }
+  }
+
+  @media (max-height: 566px) and (orientation: portrait) {
+    .mobile-board-canvas:not(.mobile-board-canvas--edit):not(.mobile-board-canvas--scoring) {
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+    }
+
+    .mobile-board-canvas:not(.mobile-board-canvas--edit):not(.mobile-board-canvas--scoring)
+      > .go-board-container {
+      overflow: visible !important;
+    }
+
+    .mobile-board-canvas--edit,
+    .mobile-board-canvas--scoring {
+      padding-top: 0 !important;
+      padding-right: 104px !important;
+      padding-bottom: 0 !important;
+    }
+
+    .mobile-board-canvas--edit > .go-board-container,
+    .mobile-board-canvas--scoring > .go-board-container {
+      overflow: visible !important;
+    }
+
+    .mobile-board-canvas--edit > .go-board-container > [aria-label='Go board'],
+    .mobile-board-canvas--scoring > .go-board-container > [aria-label='Go board'] {
+      flex-shrink: 0;
+    }
+
+    .edit-toolbar-mobile {
+      top: 8px !important;
+      right: 8px !important;
+      bottom: 8px !important;
+      left: auto !important;
+      width: 100px;
+      max-width: none;
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel {
+      display: flex;
+      height: 100%;
+      flex-direction: column;
+      border-radius: 6px;
+      box-shadow: none;
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel > :last-child {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      padding: 4px 6px;
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel > :first-child > :nth-child(2) {
+      display: none !important;
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel > :first-child > button {
+      width: 44px;
+      min-width: 44px;
+      height: 44px;
+      flex-shrink: 0;
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel > :last-child > div {
+      display: grid !important;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px;
+      padding: 6px 0;
+      border-right: 0;
+      border-bottom: 1px solid var(--ui-border);
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel > :last-child > div:last-child {
+      border-bottom: 0;
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel > :last-child > div > div:first-child {
+      grid-column: 1 / -1;
+      width: auto;
+      padding: 0 2px;
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel > :last-child button {
+      min-width: 44px;
+      padding-inline: 4px;
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel > :last-child button kbd {
+      display: none !important;
+    }
+
+    .manual-score-panel.manual-score-compact {
+      top: 8px !important;
+      right: 8px !important;
+      bottom: 8px !important;
+      left: auto !important;
+      width: 100px;
+      max-height: none;
+      overflow-y: auto;
+      box-shadow: none;
+    }
+
+    .manual-score-panel.manual-score-compact {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-header {
+      flex: 0 0 auto;
+      gap: 2px;
+      padding-inline: 4px;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-title svg,
+    .manual-score-panel.manual-score-compact .manual-score-count {
+      display: none;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-method {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      width: auto;
+      margin: 4px;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-method button,
+    .manual-score-panel.manual-score-compact .manual-score-actions button {
+      width: 100%;
+      min-width: 44px;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-result {
+      margin: 4px;
+      padding: 5px 4px;
+      font-size: 16px;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-details-toggle {
+      padding-inline: 6px;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-actions {
+      position: static;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 4px;
+      padding: 4px;
+    }
+  }
+
+  @media (min-height: 441px) and (max-height: 566px) and (orientation: portrait) {
+    .mobile-board-canvas:not(.mobile-board-canvas--edit):not(.mobile-board-canvas--scoring) {
+      padding-top: 24px !important;
+      padding-bottom: 24px !important;
+    }
+
+    .mobile-board-canvas:not(.mobile-board-canvas--edit):not(.mobile-board-canvas--scoring)
+      > .go-board-container {
+      overflow: hidden !important;
+    }
+  }
+
+  @media (min-height: 567px) and (orientation: portrait) {
+    .mobile-board-canvas--scoring {
+      padding-bottom: 196px !important;
+    }
+
+    .mobile-board-canvas--edit > .go-board-container,
+    .mobile-board-canvas--scoring > .go-board-container {
+      overflow: visible !important;
+    }
+
+    .manual-score-panel.manual-score-compact {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      height: 170px;
+      max-height: 170px;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-header {
+      grid-column: 1 / -1;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-method {
+      grid-column: 1 / 3;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-result {
+      grid-column: 3 / 5;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-details {
+      grid-column: 1;
+      min-width: 0;
+    }
+
+    .manual-score-panel.manual-score-compact
+      .manual-score-details:has(.manual-score-breakdown:not([hidden])) {
+      grid-column: 1 / -1;
+    }
+
+    .manual-score-panel.manual-score-compact:has(.manual-score-breakdown:not([hidden]))
+      .manual-score-actions {
+      position: static;
+    }
+
+    .manual-score-panel.manual-score-compact
+      .manual-score-details:not(:has(.manual-score-breakdown:not([hidden])))
+      .manual-score-details-toggle {
+      height: 100%;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-details-toggle {
+      padding-inline: 8px;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-actions {
+      grid-column: 2 / 5;
+      padding-left: 4px;
+    }
+  }
+
+  @media (min-width: 600px) and (max-width: 1023px) {
+    [data-menu-drawer-panel='true'],
+    [data-menu-scroll-hint='true'] {
+      width: min(90vw, 36rem) !important;
+      max-width: 36rem !important;
+    }
+
+    [data-menu-action-grid] {
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    [data-menu-action-grid] > button:nth-child(odd) {
+      border-right: 0;
+    }
+
+    [data-menu-action-grid] > button:nth-child(n + 3) {
+      border-top: 0;
+    }
+
+    [data-menu-action-grid] > button:not(:nth-child(3n)) {
+      border-right: 1px solid var(--ui-border);
+    }
+
+    [data-menu-action-grid] > button:nth-child(n + 4) {
+      border-top: 1px solid var(--ui-border);
+    }
+
+    /* Three columns suit the seven game actions and six study actions, but
+       create empty cells in the two-action Edit and four-action Settings
+       groups. Keep those naturally balanced as two equal columns. */
+    [data-menu-action-grid='edit'],
+    [data-menu-action-grid='settings'] {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    [data-menu-action-grid='edit'] > button,
+    [data-menu-action-grid='settings'] > button {
+      border-top: 0;
+      border-right: 0;
+    }
+
+    [data-menu-action-grid='edit'] > button:nth-child(odd),
+    [data-menu-action-grid='settings'] > button:nth-child(odd) {
+      border-right: 1px solid var(--ui-border);
+    }
+
+    [data-menu-action-grid='settings'] > button:nth-child(n + 3) {
+      border-top: 1px solid var(--ui-border);
+    }
+
+    [data-mobile-tools-action-grid='true'] {
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    [data-mobile-tools-action-grid='true'] > button:nth-child(odd) {
+      border-right: 0;
+    }
+
+    [data-mobile-tools-action-grid='true'] > button:not(:nth-child(3n)) {
+      border-right: 1px solid var(--ui-border);
+    }
+  }
+
+  /* Keep modal board tools beside the board throughout landscape tablet mode.
+     A bottom sheet obscures intersections well before the short-height rules
+     kick in (for example, 1023 × 600). */
+  @media (max-width: 1023px) and (orientation: landscape), (max-height: 499px) and (orientation: landscape) {
+    .mobile-board-canvas--edit,
+    .mobile-board-canvas--scoring {
+      padding-right: min(39vw, 20rem);
+    }
+
+    .edit-toolbar-mobile {
+      top: 8px !important;
+      right: 8px !important;
+      bottom: 8px !important;
+      left: auto !important;
+      width: min(38vw, 19rem);
+      max-width: none;
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel {
+      display: flex;
+      height: 100%;
+      flex-direction: column;
+      border-radius: 6px;
+      box-shadow: none;
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel > :last-child {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      padding: 4px 6px;
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel > :first-child > :nth-child(2) {
+      display: none !important;
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel > :first-child > button {
+      width: 44px;
+      min-width: 44px;
+      height: 44px;
+      flex-shrink: 0;
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel > :last-child > div {
+      display: grid !important;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 4px;
+      padding: 6px 0;
+      border-right: 0;
+      border-bottom: 1px solid var(--ui-border);
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel > :last-child > div:last-child {
+      border-bottom: 0;
+    }
+
+    .edit-toolbar-mobile
+      .edit-toolbar-panel
+      > :last-child
+      > div
+      > div:first-child {
+      grid-column: 1 / -1;
+      width: auto;
+      padding: 0 2px;
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel > :last-child button {
+      min-width: 0;
+      padding-inline: 4px;
+    }
+
+    .edit-toolbar-mobile .edit-toolbar-panel > :last-child button kbd {
+      display: none !important;
+    }
+
+    .manual-score-panel.manual-score-compact {
+      top: 8px !important;
+      right: 8px !important;
+      bottom: 8px !important;
+      left: auto !important;
+      width: min(38vw, 19rem);
+      max-height: none;
+      overflow-y: auto;
+      box-shadow: none;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-method,
+    .manual-score-panel.manual-score-compact .manual-score-result {
+      margin-top: 4px;
+      margin-bottom: 4px;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-method {
+      gap: 2px;
+      margin-right: 2px;
+      margin-left: 4px;
+      padding: 2px;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-result {
+      margin-right: 4px;
+      margin-left: 2px;
+    }
+
+    .manual-score-panel.manual-score-compact .manual-score-details-toggle,
+    .manual-score-panel.manual-score-compact .manual-score-method button,
+    .manual-score-panel.manual-score-compact .manual-score-actions button {
+      min-height: 44px;
+    }
+  }
+
+  @media (max-width: 480px) and (orientation: landscape) {
+    .edit-toolbar-mobile .edit-toolbar-panel > :last-child > div {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 1023px) and (orientation: landscape) {
+    .score-quiz-body {
+      display: grid;
+      grid-template-columns: minmax(8rem, 0.72fr) minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: 8px 16px;
+      padding: 8px 16px !important;
+    }
+
+    .score-quiz-header,
+    .score-quiz-footer,
+    .guess-move-header,
+    .guess-move-footer {
+      padding-top: 4px !important;
+      padding-bottom: 4px !important;
+    }
+
+    .score-quiz-body > * {
+      margin-top: 0 !important;
+    }
+
+    .score-quiz-intro {
+      display: none;
+    }
+
+    .score-quiz-board {
+      grid-column: 1;
+      grid-row: 1 / -1;
+      align-self: center;
+      max-width: 11.25rem !important;
+    }
+
+    .score-quiz-response {
+      grid-column: 2;
+      grid-row: 1;
+      align-self: center;
+    }
+
+    .score-quiz-stats {
+      grid-column: 2;
+      grid-row: 2;
+      gap: 8px;
+    }
+
+    .guess-move-body {
+      display: grid;
+      grid-template-columns: minmax(8rem, 0.72fr) minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      gap: 8px 16px;
+      padding: 8px 16px !important;
+    }
+
+    .guess-move-body > * {
+      margin-top: 0 !important;
+    }
+
+    .guess-move-toolbar {
+      grid-column: 2;
+      grid-row: 1;
+      flex-wrap: nowrap;
+    }
+
+    .guess-move-toolbar [data-guess-move-prompt='true'] {
+      min-width: 0;
+    }
+
+    .guess-move-board {
+      grid-column: 1;
+      grid-row: 1 / -1;
+      align-self: center;
+      max-width: 11.25rem !important;
+    }
+
+    [data-guess-move-result='true'] {
+      grid-column: 2;
+      grid-row: 2;
+      align-self: center;
+    }
+
+    [data-guess-move-stats='true'] {
+      grid-column: 2;
+      grid-row: 3;
+      gap: 8px;
+    }
+
+    .settings-modal .settings-modal-header,
+    .settings-modal .settings-modal-footer {
+      padding-top: 8px !important;
+      padding-bottom: 8px !important;
+    }
+
+    .settings-modal .settings-modal-body {
+      display: grid !important;
+      grid-template-columns: minmax(9rem, 0.42fr) minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+      column-gap: 8px;
+      row-gap: 8px;
+      padding-top: 8px !important;
+      padding-bottom: 8px !important;
+    }
+
+    .settings-modal .settings-search,
+    .settings-modal .settings-tabs {
+      margin-bottom: 0 !important;
+    }
+
+    .settings-modal .settings-search {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .settings-modal .settings-search-input::placeholder {
+      color: var(--ui-text-muted);
+    }
+
+    .settings-modal .settings-tabs {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    .settings-modal .settings-modal-content {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+  }
+
+  @media (max-height: 520px) and (orientation: landscape) {
+    :root,
+    :root[data-ui-density='compact'],
+    :root[data-ui-density='comfortable'],
+    :root[data-ui-density='large'] {
+      --mobile-tabbar-height: 52px;
+      --mobile-bottom-controls-height: 0px !important;
+    }
+
+    .new-game-modal {
+      max-height: calc(100dvh - 16px) !important;
+    }
+
+    .new-game-modal-header,
+    .new-game-modal-footer {
+      padding-top: 8px !important;
+      padding-bottom: 8px !important;
+    }
+
+    .new-game-modal-body {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 12px !important;
+    }
+
+    .new-game-modal-body > * {
+      margin-block: 0 !important;
+    }
+
+    .paste-sgf-modal-header,
+    .paste-sgf-modal-footer {
+      padding-top: 8px !important;
+      padding-bottom: 8px !important;
+    }
+
+    .paste-sgf-modal-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px !important;
+    }
+
+    .paste-sgf-modal-body > * {
+      margin-block: 0 !important;
+    }
+
+    .paste-sgf-modal-textarea {
+      min-height: 112px !important;
+    }
+
+    .game-report-modal {
+      max-height: calc(100dvh - 16px) !important;
+    }
+
+    .game-report-modal-header,
+    .game-report-modal-footer {
+      padding-top: 8px !important;
+      padding-bottom: 8px !important;
+    }
+
+    .game-report-modal-body {
+      padding: 12px !important;
+    }
+
+    .game-report-modal-empty {
+      min-height: 0 !important;
+      padding: 8px !important;
+    }
+
+    .notification-toast-region,
+    .notification-toast-region--below-command-bar {
+      top: 0.5rem;
+      justify-content: flex-end;
+    }
+
+    .about-dialog-panel .about-dialog-header,
+    .about-dialog-panel .about-dialog-body {
+      padding: 8px !important;
+    }
+
+    .about-dialog-meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      padding-inline: 0 !important;
+    }
+
+    .about-dialog-row {
+      min-width: 0;
+      min-height: 44px;
+      padding: 4px 8px;
+    }
+
+    .about-dialog-row:nth-child(odd) {
+      border-right: 1px solid var(--ui-border);
+    }
+
+    .about-dialog-row:nth-child(n + 3) {
+      border-bottom: 0;
+    }
+
+    .about-dialog-row a {
+      max-width: 100%;
+    }
+
+    .ogs-sync-header,
+    .ogs-sync-footer {
+      padding-top: 4px !important;
+      padding-bottom: 4px !important;
+    }
+
+    .ogs-sync-intro {
+      display: none;
+    }
+
+    .tournament-header,
+    .tournament-footer {
+      padding-top: 4px !important;
+      padding-bottom: 4px !important;
+    }
+
+    .tournament-tabs {
+      padding-top: 4px !important;
+    }
+
+    .tournament-setup-intro {
+      display: none;
+    }
+
+    .pro-games-header {
+      padding-top: 4px !important;
+      padding-bottom: 4px !important;
+    }
+
+    [data-photo-board-footer='true'] {
+      grid-template-columns: minmax(0, 0.7fr) minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr) !important;
+      padding-top: 8px !important;
+      padding-bottom: 8px !important;
+    }
+
+    [data-photo-board-footer='true'] .col-span-2 {
+      grid-column: auto !important;
+    }
+
+    .notification-toast {
+      max-width: min(18rem, calc(100% - 1rem));
+    }
+
+    /* The command bar used to be hidden outright here, because a 52px band
+       above a height-bound board costs real board size on a landscape phone.
+       That left analysis mode with no readout at all while ~280px of margin
+       sat empty either side of the centred board. Dock it in that margin
+       instead: the shell becomes two columns, the board column keeps the whole
+       height it had, and the rail only eats width the board was not using.
+       The board is height-bound here, so it comes out exactly the same size. */
+    .mobile-board-shell {
+      /* Tailwind's `flex` utility outranks this layer on cascade order. */
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: minmax(0, 1fr);
+    }
+
+    /* The canvas has to keep filling the row: it sizes the board off its own
+       height, so centring it here costs 20px of board instead of nothing. */
+    .mobile-board-shell > .mobile-board-canvas {
+      grid-column: 1;
+      grid-row: 1;
+      align-self: stretch;
+    }
+
+    .analysis-command-bar-slot,
+    .analysis-command-bar-slot--reserve {
+      grid-column: 2;
+      grid-row: 1;
+      align-self: center;
+      width: auto;
+      min-height: 0;
+    }
+
+    /* One column of stacked metrics, sized to fit the narrowest landscape
+       margin we support. The actions row stays out — every one of its buttons
+       already has a home in the Tools sheet on this layout. */
+    .analysis-command-bar-slot .analysis-command-bar {
+      grid-template-columns: minmax(0, 1fr);
+      width: 8.5rem;
+      min-height: 0;
+      gap: 0.375rem;
+      margin: 0;
+      padding: 0.5rem;
+      /* The mobile shell flattens this bar because there it is a full-width
+         band above the board. Standing alone in the margin it needs its edges
+         back, or it reads as text spilled onto the background. */
+      background: color-mix(in srgb, var(--ui-panel) 94%, transparent);
+      border: 1px solid var(--ui-border);
+      border-radius: 8px;
+    }
+
+    .analysis-command-bar-slot .analysis-command-bar__metrics {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0.25rem;
+      overflow: visible;
+    }
+
+    .analysis-command-bar-slot .analysis-command-bar__actions {
+      display: none;
+    }
+
+    /* The engine line is one nowrap row built for a full-width band. It gets
+       about 88px of text in the rail, so it ellipsised mid-word — "Ready
+       fallbac…", "Loading · We…". Let it wrap instead: the rail is a column
+       with room to spare, and the dot hangs at the top of the first line. */
+    .analysis-command-bar-slot .analysis-command-bar__status {
+      align-items: flex-start;
+      gap: 0.375rem;
+      white-space: normal;
+    }
+
+    .analysis-command-bar-slot .analysis-command-bar__dot {
+      margin-top: 0.3125rem;
+    }
+
+    .analysis-command-bar-slot .analysis-command-bar__status-text {
+      overflow: visible;
+    }
+
+    /* The strip carries Tailwind's `flex`, and utilities outrank this layer, so
+       the plain `display: none` above never reached it — a 52px band kept
+       stealing height from a board that is height-bound on a landscape phone
+       (203px instead of ~250px on an 844x390 screen). */
+    .mobile-board-shell > [aria-label='Preview continuations'] {
+      display: none !important;
+    }
+
+    [data-bottom-more-grid='true'] {
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+      gap: 4px !important;
+      padding: 4px !important;
+    }
+
+    [data-bottom-more-sheet='true'] > div:first-child {
+      padding-top: 4px !important;
+      padding-bottom: 4px !important;
+    }
+
+    [data-bottom-more-grid='true'] > button {
+      min-height: 48px;
+      gap: 4px !important;
+      padding: 4px 6px !important;
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    [data-bottom-more-grid='true'] > button > div:first-child {
+      width: 28px !important;
+      height: 28px !important;
+    }
+
+    [data-bottom-more-grid='true'] > .h-px {
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+    }
+
+    [data-bottom-more-grid='true'] > .col-span-2 {
+      grid-column: 1 / -1 !important;
+    }
+
+    /* The final mistake-navigation pair belongs together. Let it divide the
+       full landscape row instead of bunching into the left half of the sheet. */
+    [data-bottom-more-grid='true'] > button:nth-last-of-type(2),
+    [data-bottom-more-grid='true'] > button:last-of-type {
+      grid-column: span 2;
+    }
+
+    [data-mobile-tools-action-grid='true'] {
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    }
+
+    [data-mobile-tools-action-grid='true'] > button:nth-child(odd) {
+      border-right: 0;
+    }
+
+    [data-mobile-tools-action-grid='true'] > button:not(:nth-child(4n)) {
+      border-right: 1px solid var(--ui-border);
+    }
+
+    .mobile-bottom-dock {
+      display: grid;
+      grid-template-columns: minmax(0, 1.55fr) minmax(19rem, 1fr);
+      align-items: stretch;
+    }
+
+    .mobile-bottom-dock > * {
+      min-width: 0;
+      border-top: 0;
+    }
+
+    .mobile-bottom-dock > .mobile-tabbar:only-child {
+      grid-column: 1 / -1;
+    }
+
+    .mobile-bottom-dock .mobile-tabbar,
+    .mobile-bottom-dock .mobile-tabbar-grid {
+      min-height: 52px;
+      height: 52px;
+    }
+
+    /* The control half of the split landscape dock is phone-width even on a
+       wide viewport. Keep live turn/move status ahead of verbose metadata;
+       branch navigation remains available from More Controls. */
+    .mobile-bottom-dock .mobile-bottom-meta {
+      justify-content: center;
+      gap: 2px !important;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+    }
+
+    .mobile-bottom-dock .mobile-bottom-current-player,
+    .mobile-bottom-dock .mobile-bottom-current-captures,
+    .mobile-bottom-dock .mobile-bottom-board-size,
+    .mobile-bottom-dock .mobile-bottom-handicap,
+    .mobile-bottom-dock .mobile-bottom-meta-divider,
+    .mobile-bottom-dock .mobile-bottom-meta [data-bottom-branch-chip='true'] {
+      display: none !important;
+    }
+
+    .mobile-bottom-dock .mobile-bottom-turn-chip,
+    .mobile-bottom-dock .mobile-bottom-move-button,
+    .mobile-bottom-dock .mobile-bottom-move-editor {
+      flex: 0 0 auto;
+    }
+
+    .mobile-bottom-dock .mobile-bottom-meta [data-mobile-save-status='true'] {
+      width: 24px;
+      height: 24px;
+      justify-content: center;
+      gap: 0;
+      padding: 0;
+    }
+
+    .mobile-bottom-dock .mobile-bottom-save-status-label {
+      display: none;
+    }
+
+    .notification-toast-region,
+    .notification-toast-region--below-command-bar {
+      padding-bottom: 2px;
+    }
+
+    .notification-toast {
+      min-height: 38px;
+      padding: 3px 8px;
+    }
+
+    .notification-toast-icon {
+      width: 24px;
+      height: 24px;
+    }
+
+    .notification-toast-action,
+    .notification-toast-close {
+      width: 46px;
+      height: 46px;
+    }
+
+  }
+
+  @media (max-width: 540px) and (max-height: 520px) and (orientation: landscape) {
+    .settings-modal .settings-tab-label-full {
+      display: none;
+    }
+
+    .settings-modal .settings-tab-label-compact {
+      display: inline;
+    }
+  }
+
+  @media (min-width: 600px) and (max-width: 1023px) {
+    /* Balance each tools group around its actual action count. A single global
+       column count produced large empty cells throughout the tablet sheet. */
+    [data-mobile-tools-section='ai'] {
+      grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    }
+
+    [data-mobile-tools-section='ai'] > button {
+      grid-column: span 2;
+      border-right: 0;
+    }
+
+    [data-mobile-tools-section='ai'] > button:nth-child(4):nth-last-child(2),
+    [data-mobile-tools-section='ai'] > button:nth-child(5):last-child {
+      grid-column: span 3;
+    }
+
+    [data-mobile-tools-section='game'] > button,
+    [data-mobile-tools-section='reports'] > button {
+      border-right: 0;
+    }
+
+    [data-mobile-tools-section='ai'] > button:nth-child(1),
+    [data-mobile-tools-section='ai'] > button:nth-child(2),
+    [data-mobile-tools-section='ai'] > button:nth-child(4):not(:last-child),
+    [data-mobile-tools-section='ai'] > button:nth-child(5):not(:last-child),
+    [data-mobile-tools-section='game'] > button:nth-child(1),
+    [data-mobile-tools-section='game'] > button:nth-child(2),
+    [data-mobile-tools-section='game'] > button:nth-child(4),
+    [data-mobile-tools-section='game'] > button:nth-child(5),
+    [data-mobile-tools-section='reports'] > button:not(:nth-child(4n)) {
+      border-right: 1px solid var(--ui-border);
+    }
+
+    [data-mobile-tools-section='game'] {
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    [data-mobile-tools-section='reports'] {
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    }
+  }
+
+  @media (min-width: 760px) and (max-width: 1023px) and (max-height: 520px) and (orientation: landscape) {
+    /* On a wide, short phone or tablet every action still clears a 44px touch
+       target, so use one row per group and return that height to the tools
+       below the fold. */
+    [data-mobile-tools-section='ai']:not(:has(> button:nth-child(6))) {
+      grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    }
+
+    [data-mobile-tools-section='ai']:has(> button:nth-child(6)) {
+      grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    }
+
+    [data-mobile-tools-section='ai'] > button,
+    [data-mobile-tools-section='game'] > button {
+      grid-column: auto !important;
+      border-right: 1px solid var(--ui-border);
+    }
+
+    [data-mobile-tools-section='ai'] > button:last-child,
+    [data-mobile-tools-section='game'] > button:last-child,
+    [data-mobile-tools-section='reports'] > button:last-child {
+      border-right: 0;
+    }
+
+    [data-mobile-tools-section='game'] {
+      grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    }
+  }
+
+  @media (max-width: 419px) and (max-height: 520px) and (orientation: landscape) {
+    [data-bottom-more-grid='true'] > button {
+      gap: 2px !important;
+      padding: 2px 4px !important;
+      font-size: 11px;
+    }
+
+    [data-bottom-more-grid='true'] > button > div:first-child {
+      width: 24px !important;
+      height: 24px !important;
+    }
+
+    .settings-modal .settings-modal-body {
+      grid-template-columns: 7rem minmax(0, 1fr);
+    }
+
+    .settings-modal .settings-tabs [role='tab'] {
+      overflow: hidden;
+      padding-inline: 2px !important;
+      font-size: 10.5px !important;
+    }
+
+    [data-photo-board-footer='true'] {
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      gap: 4px !important;
+      padding: 4px 8px !important;
+    }
+
+    [data-photo-board-footer='true'] button {
+      padding-inline: 8px !important;
+      font-size: 12px !important;
+    }
+
+    [data-photo-board-footer='true'] button span svg {
+      display: none;
+    }
+
+    [data-photo-board-footer='true'] [data-photo-board-import='true'] {
+      grid-column: span 2 / span 2 !important;
+    }
+
+    .score-quiz-response {
+      align-self: start;
+    }
+
+    .score-quiz-response > * {
+      margin-top: 0 !important;
+    }
+
+    .score-quiz-response > :not(:last-child) {
+      margin-bottom: 6px !important;
+    }
+
+    .score-quiz-response input[type='number'] {
+      width: 4rem !important;
+    }
+
+    .score-quiz-response label {
+      gap: 8px !important;
+    }
+  }
+
+  @media (max-width: 639px) {
+    .pro-games-detail {
+      padding: 12px !important;
+    }
+
+    .pro-games-preview {
+      max-width: 11rem !important;
+    }
+
+    .pro-games-metadata {
+      margin-top: 8px !important;
+    }
+
+    .pro-games-load {
+      margin-top: 12px !important;
+    }
+  }
+
+  @media (max-width: 539px) and (max-height: 520px) and (orientation: landscape) {
+    .pro-games-featured,
+    .pro-games-preview,
+    .pro-games-metadata,
+    .pro-games-detail [data-pro-game-editorial] {
+      display: none !important;
+    }
+
+    .pro-games-filters {
+      padding: 8px !important;
+    }
+
+    .pro-games-detail {
+      display: block !important;
+      flex: none !important;
+      min-height: 52px;
+      padding: 4px 8px !important;
+      overflow: visible;
+    }
+
+    .pro-games-load {
+      width: 100%;
+      margin-top: 0 !important;
+    }
+  }
+
+  @media (min-width: 420px) and (max-height: 520px) and (orientation: landscape) {
+    .lessons-header,
+    .lessons-footer {
+      padding-top: 4px !important;
+      padding-bottom: 4px !important;
+    }
+
+    .lessons-body {
+      padding: 8px 16px !important;
+    }
+
+    .lessons-body > * {
+      margin-top: 0 !important;
+    }
+
+    .lessons-body[data-lessons-active='false'] .lessons-intro {
+      display: none;
+    }
+
+    .lessons-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px 8px;
+    }
+
+    .lessons-list > li {
+      min-width: 0;
+      margin-top: 0 !important;
+    }
+
+    .lessons-list > li > button {
+      height: 6.6875rem;
+      padding: 6px 12px;
+    }
+
+    .lessons-list > li > button > div:last-child {
+      display: -webkit-box;
+      overflow: hidden;
+      line-height: 1.2;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .lessons-body[data-lessons-active='true'] {
+      display: grid;
+      grid-template-columns: 10rem minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr) auto auto;
+      gap: 8px 16px;
+    }
+
+    .lessons-body[data-lessons-active='true'] > * {
+      min-width: 0;
+    }
+
+    .lessons-step,
+    .lessons-copy,
+    .lessons-hint,
+    .lessons-feedback {
+      grid-column: 2;
+    }
+
+    .lessons-board {
+      grid-column: 1;
+      grid-row: 1 / -1;
+      align-self: center;
+      max-width: 10rem !important;
+    }
+  }
+
+  @media (min-width: 540px) and (max-width: 1023px) and (orientation: landscape) {
+    .tournament-body {
+      padding: 8px 16px !important;
+    }
+
+    .tournament-setup {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.9fr) minmax(0, 1fr);
+      align-items: end;
+      gap: 12px;
+    }
+
+    .tournament-setup > * {
+      min-width: 0;
+      margin-top: 0 !important;
+    }
+
+    .tournament-board-sizes button,
+    .tournament-color-options button {
+      padding-inline: 8px;
+    }
+  }
+
+  @media (min-width: 540px) and (max-height: 520px) and (orientation: landscape) {
+    .ogs-sync-body {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-auto-rows: auto;
+      align-content: start;
+      gap: 4px 12px;
+      padding: 12px 16px !important;
+    }
+
+    .ogs-sync-body > * {
+      margin-top: 0 !important;
+    }
+
+    .ogs-sync-body label[for='ogs-sync-username'] {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .ogs-sync-body #ogs-sync-username {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .ogs-sync-body label[for='ogs-sync-limit'] {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    .ogs-sync-body #ogs-sync-limit {
+      grid-column: 2;
+      grid-row: 2;
+    }
+
+    .ogs-sync-body [role='status'],
+    .ogs-sync-body [role='alert'] {
+      grid-column: 1 / -1;
+    }
+
+    .game-analysis-modal {
+      max-width: min(720px, calc(100vw - 32px)) !important;
+      max-height: calc(100dvh - 16px) !important;
+    }
+
+    .game-analysis-header,
+    .game-analysis-footer {
+      padding-top: 4px !important;
+      padding-bottom: 4px !important;
+    }
+
+    .game-analysis-body {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: start;
+      gap: 8px 12px;
+      padding: 8px 16px !important;
+    }
+
+    .game-analysis-body > * {
+      min-width: 0;
+      margin-top: 0 !important;
+    }
+
+    .game-analysis-column {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .game-analysis-column > * {
+      margin-top: 0 !important;
+    }
+
+    [data-game-analysis-visit-presets='true'] > .grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 4px;
+    }
+
+    .pro-games-layout {
+      flex-direction: row !important;
+    }
+
+    .pro-games-list {
+      max-width: 55%;
+      border-right: 1px solid var(--ui-border);
+      border-bottom: 0 !important;
+    }
+
+    .pro-games-filters {
+      padding: 8px !important;
+    }
+
+    .pro-games-detail {
+      display: grid !important;
+      grid-template-columns: 6.5rem minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 8px;
+      padding: 8px !important;
+    }
+
+    .pro-games-preview {
+      grid-column: 1;
+      grid-row: 1;
+      align-self: center;
+      max-width: 6.5rem !important;
+    }
+
+    .pro-games-metadata {
+      grid-column: 2;
+      grid-row: 1;
+      margin-top: 0 !important;
+    }
+
+    .pro-games-detail [data-pro-game-editorial] {
+      display: none;
+    }
+
+    .pro-games-load {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      margin-top: 0 !important;
+    }
+  }
+
+  @media (min-width: 700px) and (max-height: 520px) and (orientation: landscape) {
+    .game-analysis-body {
+      grid-template-columns: 1.2fr minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .game-analysis-body > .game-analysis-column:last-child {
+      display: contents;
+    }
+
+    .game-analysis-range {
+      grid-column: 2;
+    }
+
+    .game-analysis-mistakes {
+      grid-column: 3;
+    }
+  }
+
+  /* View-menu toggles. The check occupies its slot whether or not it is set,
+     so every label in the column starts on the same x. */
+  .view-toggle-mark {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 12px;
+    color: var(--ui-accent);
+  }
+
+  .view-toggle[aria-pressed='true'] {
+    font-weight: 600;
+  }
+
+  .view-toggle-key {
+    flex: none;
+    padding-left: 0.5rem;
+  }
+
+  /* Phone portrait leaves 35-38% of the viewport empty around a width-limited
+     board. The match strip takes the top of that band and carries the facts
+     the bottom control bar hides below 415px: who is to move, both names, and
+     capture counts. Layout gates it on viewport size (see
+     shouldShowMobileMatchStrip) so it never steals height from the board. */
+  .mobile-match-strip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-height: 34px;
+    margin-bottom: 6px;
+    padding: 4px 6px;
+    border: 1px solid var(--ui-border);
+    border-radius: 10px;
+    background: var(--ui-surface);
+    font-size: 0.75rem;
+    line-height: 1.1;
+  }
+
+  /* Content-sized rather than equal halves: with `flex: 1 1 0` a short name
+     ("Gu Li") kept 100px of slack while the long one beside it ellipsed, so
+     "Lee Sedol" lost 14px at 390px wide. An `auto` basis spends the free space
+     where the text actually is. */
+  .mobile-match-player {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    padding: 3px 6px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    color: var(--ui-text-muted);
+  }
+
+  .mobile-match-player.is-to-move {
+    border-color: color-mix(in srgb, var(--ui-accent) 45%, transparent);
+    background: color-mix(in srgb, var(--ui-accent) 12%, transparent);
+    color: var(--ui-text);
+  }
+
+  .mobile-match-name {
+    overflow: hidden;
+    min-width: 0;
+    font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .mobile-match-player.is-to-move .mobile-match-name {
+    color: var(--ui-accent);
+  }
+
+  .mobile-match-rank {
+    flex: 0 0 auto;
+    color: var(--ui-text-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Captures read as a running gain for the side that took them, so the count
+     stays legible next to a truncating name. */
+  .mobile-match-captures {
+    flex: 0 0 auto;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--ui-surface-2);
+    color: var(--ui-text-muted);
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mobile-match-facts {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px;
+    padding-right: 2px;
+    color: var(--ui-text-faint);
+    font-size: 0.6875rem;
+    white-space: nowrap;
+  }
+
+  .mobile-match-fact {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Two names plus both capture counts win over static setup facts when the
+     row gets tight. */
+  @media (max-width: 379px) {
+    .mobile-match-facts {
+      display: none;
+    }
+  }
+
+
+  /* The settings dialog is 960px wide, so a right-aligned switch sat about
+     690px from the label it belongs to, and the General tab scrolled 2100px in
+     a 527px window. Pair the plain rows into two columns once the dialog is
+     wide enough to hold them: the label and its control end up a glance apart
+     and the tab scrolls roughly half as far. Blocks that own their own
+     internal layout - theme pickers, input grids, section hints - keep the
+     full width. */
+  @media (min-width: 900px) {
+    .settings-section > div:has(> .settings-row) {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: start;
+      gap: 6px 28px;
+    }
+
+    /* space-y-4 stacks margins on the siblings, which a grid gap replaces. */
+    .settings-section > div:has(> .settings-row) > * {
+      grid-column: 1 / -1;
+      margin-top: 0 !important;
+    }
+
+    .settings-section > div:has(> .settings-row) > .settings-row {
+      grid-column: span 1;
+    }
+  }
+
+
+  /* Measured on a phone: the longest label, "Forward 10 moves", needs 127px
+     and the cell gives its text 124px at 390px wide. One label wrapped, its
+     grid row grew from 48px to 61px, and the sheet read as two rhythms. Buy
+     back the three pixels, and let a label that still wraps on a narrower
+     phone do it inside the 48px the other rows keep. Portrait only: the
+     landscape sheet is a four-column layout with its own measured tuning. */
+  @media (orientation: portrait) {
+    /* Descendant, not child: the Edit/Score pair sits one level deeper in its
+       own two-column wrapper and is the same kind of row. */
+    [data-bottom-more-grid='true'] button {
+      gap: 6px !important;
+      padding: 4px 8px !important;
+      line-height: 1.15;
+    }
+  }
+
+
+  /* The backend detail is already dropped below 640px, but on the narrowest
+     phones the pill's own padding left the state word 40px to say "Loading"
+     in 47px, so it rendered as "Load...". A truncated status word is worse
+     than a tight one: buy the room back from the padding and the gap. */
+  @media (max-width: 380px) {
+    .analysis-command-bar__status {
+      gap: 0.25rem;
+      padding-inline: 0.25rem;
+      font-size: 0.6875rem;
+    }
+  }
+
+}
+
+/* One-shot notable-move animations (score-loss pill, set-up sparkle). */
+.move-anim {
+  position: absolute;
+  z-index: 35;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.move-anim-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--ui-font-mono);
+  color: #fff;
+  background: #d97706;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  animation: move-anim-float 1.2s ease-out forwards;
+}
+
+.move-anim-pill--severe {
+  background: #dc2626;
+}
+
+@keyframes move-anim-float {
+  0% {
+    opacity: 0;
+    transform: translateY(2px) scale(0.7);
+  }
+  18% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-28px) scale(0.95);
+  }
+}
+
+.move-anim-sparkle {
+  position: relative;
+  width: 0;
+  height: 0;
+}
+
+.move-anim-sparkle span {
+  position: absolute;
+  color: #fbbf24;
+  text-shadow: 0 0 6px rgba(251, 191, 36, 0.8);
+  animation: move-anim-twinkle 1s ease-out both;
+}
+
+.move-anim-sparkle span:nth-child(2) {
+  animation-delay: 0.12s;
+}
+
+.move-anim-sparkle span:nth-child(3) {
+  animation-delay: 0.24s;
+}
+
+@keyframes move-anim-twinkle {
+  0% {
+    opacity: 0;
+    transform: scale(0.2) rotate(-20deg);
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.4) rotate(15deg) translateY(-8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .move-anim {
+    display: none;
+  }
+}
+
+/* Easy-Go compact battle refinements. */
+.match-score { text-align:center; min-width:58px; }.match-score strong { display:block; color:#123f70; font-size:12px; line-height:1; }.match-score small { color:#87958e; font-size:10px; }
+.board-grid { --board-inset: 5%; }.board-line.horizontal { left:var(--board-inset); width:calc(100% - 2 * var(--board-inset)); }.board-line.vertical { top:var(--board-inset); height:calc(100% - 2 * var(--board-inset)); }.intersection { width:calc((100% - 2 * var(--board-inset)) / var(--board-size)); height:calc((100% - 2 * var(--board-inset)) / var(--board-size)); }
+.recommendations { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; }.recommendation { display:grid; grid-template-columns:22px 1fr; grid-template-rows:auto auto; gap:2px 6px; padding:8px 7px; }.recommend-rank { grid-row:1 / 3; align-self:center; }.recommend-coord { font-size:11px; }.recommend-win { grid-column:2; text-align:left; font-size:12px; color:#254f75; }.recommendation.rank-0 .recommend-rank { background:#db4a4a; }.recommendation.rank-1 .recommend-rank { background:#d6a52f; }.recommendation.rank-2 .recommend-rank { background:#4b9b68; }
+.coach-heading { min-height:32px; }.coach-heading > div { gap:8px; }.coach-icon { width:30px; height:30px; }.toggle { position:relative; z-index:2; flex:none; overflow:hidden; isolation:isolate; }.toggle span { position:relative; z-index:1; }
+.switch { position:relative; display:inline-flex; width:42px; height:24px; flex:none; }.switch input { position:absolute; opacity:0; width:0; height:0; }.switch span { width:100%; height:100%; border-radius:999px; background:#c7d0d9; transition:.2s; }.switch span::after { content:""; position:absolute; width:18px; height:18px; top:3px; left:3px; border-radius:50%; background:#fff; box-shadow:0 1px 3px #18324a33; transition:.2s; }.switch input:checked + span { background:#1d5c96; }.switch input:checked + span::after { transform:translateX(18px); }.switch input:focus-visible + span { outline:2px solid #70a6d3; outline-offset:2px; }
+.last-move-marker { position:absolute; width:35%; height:35%; border:2px solid #d54b4b; border-radius:50%; z-index:3; pointer-events:none; }
+.hint-dot.rank-0 { background:#d94343; }.hint-dot.rank-1 { background:#d2a42d; }.hint-dot.rank-2 { background:#4c9b68; }
+.hint-dot { font-size:clamp(10px, calc(42px / var(--board-size)), 18px); }
+.board-loading { position:absolute; inset:0; z-index:10; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; background:#17231d66; backdrop-filter:grayscale(1) blur(1px); color:#fff; font-size:12px; font-weight:700; }.loading-track { width:46%; height:5px; border-radius:99px; background:#ffffff55; overflow:hidden; }.loading-track i { display:block; width:45%; height:100%; border-radius:inherit; background:#fff; animation:easygo-loading 1.2s ease-in-out infinite; }@keyframes easygo-loading { 0%{transform:translateX(-110%)} 100%{transform:translateX(240%)} }
+.score-mark { position:absolute; width:46%; height:46%; border-radius:3px; z-index:2; pointer-events:none; opacity:.85; }.score-mark.black { background:#123f70; }.score-mark.white { background:#f3f5f6; border:1px solid #7e8b93; }
+.score-legend { display:flex; justify-content:center; gap:15px; color:#65756c; font-size:12px; margin:-6px 0 16px; }.score-legend span { display:flex; align-items:center; gap:5px; }.score-legend i { width:10px; height:10px; border-radius:2px; display:inline-block; }.score-legend i.black { background:#123f70; }.score-legend i.white { background:#f3f5f6; border:1px solid #7e8b93; }
+.board-options { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); }.board-options button { padding:8px 4px; white-space:nowrap; }
+.full-options { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); width:100%; }.full-options button { min-width:0; padding-inline:4px; }
+.thinking-options { grid-template-columns:repeat(6, minmax(0, 1fr)); }.thinking-options button { font-size:11px; padding-inline:2px; }
+.battle-actions > div:has(button:nth-child(3)) { grid-template-columns:repeat(3, minmax(0,1fr)); }
+.battle-shell { display:flex; flex-direction:column; min-height:100dvh; }.battle-header { order:1; }.match-card { order:2; }.battle-actions { order:3; }.board-wrap { order:4; flex:1 1 auto; align-self:stretch; width:100%; max-width:none; min-width:0; min-height:260px; aspect-ratio:auto; display:grid; place-items:center; box-sizing:border-box; }.board-grid { width:min(100%, calc(100dvh - 280px)); height:auto; max-width:560px; aspect-ratio:1 / 1; }.coach-panel { order:5; }.score-sheet,.dialog-backdrop,.battle-toast { order:6; }
+.battle-header h1 { display:flex; align-items:center; gap:7px; font-family:Georgia, 'Times New Roman', serif; letter-spacing:.04em; }.battle-header h1 svg { color:#1d5c96; font-size:17px; }
+.turn-mark.thinking { opacity:1; border:2px solid #9eb1bd; border-top-color:#1d5c96; background:transparent; width:12px; height:12px; animation:easygo-spin .75s linear infinite; }
+.battle-actions button { min-height:48px; }.header-tools { min-height:44px; }.switch { height:28px; width:50px; }.switch span::after { width:22px; height:22px; top:3px; left:3px; }.switch input:checked + span::after { transform:translateX(22px); }
+.dialog-options button { min-height:44px; }.dialog-title button { min-width:44px; min-height:44px; }
+.battle-header h1 { font-size:18px; letter-spacing:.02em; margin:0; }.battle-header { align-items:center; margin-bottom:14px; }.eyebrow { display:none; }
+.match-score small { display:none; }.turn-mark { width:7px; height:7px; border-radius:50%; background:#39ad70; margin-left:auto; font-size:0; }.white-player .turn-mark { margin-left:0; margin-right:auto; }.turn-mark:not(.active) { opacity:0; }
+.header-tools { display:flex; align-items:center; gap:8px; color:#5f7180; font-size:12px; font-weight:700; }.thinking-spinner { width:13px; height:13px; border:2px solid #c6d4df; border-top-color:#1d5c96; border-radius:50%; animation:easygo-spin .75s linear infinite; }@keyframes easygo-spin { to { transform:rotate(360deg); } }
+.match-card { grid-template-columns:32px 1fr auto 1fr 32px; gap:10px; }.match-side { display:flex; align-items:center; gap:8px; min-width:0; }.match-side.right { justify-content:flex-end; }.match-side .turn-mark { margin:0; flex:none; }.match-side.right .turn-mark { margin:0; }.turn-mark.thinking { opacity:1 !important; }
+.recommendations { grid-template-columns:repeat(3,1fr); }.recommendation { display:flex; align-items:center; justify-content:center; gap:7px; min-width:0; padding:9px 6px; }.recommend-rank { flex:none; }.recommend-coord,.recommend-win { font-size:13px; white-space:nowrap; }.recommend-win { font-weight:800; }
+.battle-actions { display:grid; grid-template-columns:1fr; gap:8px; }.battle-actions > div { display:grid; grid-template-columns:1fr 1fr; gap:8px; }.battle-actions button { height:42px; }
+.result-dialog { width:min(100%,360px); background:#fff; border-radius:18px; padding:22px; box-shadow:0 18px 50px #16251f44; text-align:center; }.result-dialog > strong { font-size:16px; }.result-dialog p { color:#123f70; font-size:25px; font-weight:800; margin:12px 0 20px; }.result-dialog > div { display:grid; grid-template-columns:1fr 1fr; gap:8px; }.result-dialog button { height:42px; border:1px solid #dce5df; background:#fff; color:#607168; border-radius:9px; font-weight:700; }
