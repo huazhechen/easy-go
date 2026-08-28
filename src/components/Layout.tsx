@@ -174,6 +174,7 @@ export const Layout: React.FC = () => {
     resign,
     playMove,
     makeAiMove,
+    undoMove,
     isAiPlaying,
     aiColor,
     navigateBack,
@@ -250,8 +251,9 @@ export const Layout: React.FC = () => {
       startNewGame: state.startNewGame,
       passTurn: state.passTurn,
       resign: state.resign,
-      playMove: state.playMove,
-      makeAiMove: state.makeAiMove,
+    playMove: state.playMove,
+    makeAiMove: state.makeAiMove,
+    undoMove: state.undoMove,
       isAiPlaying: state.isAiPlaying,
       aiColor: state.aiColor,
       navigateBack: state.navigateBack,
@@ -2846,11 +2848,7 @@ export const Layout: React.FC = () => {
   const currentMoveInsight = getMoveInsight(currentNode.move, boardSize, currentNode.parent?.gameState.board ?? null);
 
   const handleUndo = () => {
-    const st = useGameStore.getState();
-    const lastMover = st.currentNode.move?.player ?? null;
-    const shouldUndoTwice = !!st.isAiPlaying && !!st.aiColor && lastMover === st.aiColor && st.currentPlayer !== st.aiColor;
-    navigateBack();
-    if (shouldUndoTwice) navigateBack();
+    undoMove();
   };
 
   const handleResign = () => {

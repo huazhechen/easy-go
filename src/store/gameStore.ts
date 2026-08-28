@@ -1111,7 +1111,8 @@ let gameAnalysisToken = 0;
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const ANALYSIS_QUEUE_PRIORITY = {
   interactive: 100,
-  aiMove: 70,
+  // Playing a move must win over background continuous recommendations.
+  aiMove: 110,
   selfplay: 55,
   fullGame: 20,
   fastGame: 15,
@@ -1164,6 +1165,15 @@ const gameAnalysisFailureUpdate = (
 };
 
 const analysisCacheKey = (...parts: unknown[]): string => JSON.stringify(parts);
+
+// Invalidates asynchronous AI callbacks whenever the visible game position
+// changes. Cancellation alone is not sufficient because an engine may resolve
+// concurrently with the cancel request.
+let aiRequestEpoch = 0;
+const invalidateAiRequests = (reason: string): void => {
+  aiRequestEpoch += 1;
+  analysisQueue.cancelGroup('ai-move', reason);
+};
 
 export const useGameStore = create<GameStore>((set, get) => ({
   // Flat properties (mirrored from currentNode.gameState for easy access)
@@ -3167,6 +3177,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   playMove: (x: number, y: number, isLoad = false) => {
     const state = get();
+    if (!isLoad) invalidateAiRequests('Position changed by player move');
 
     // Check if we are loading or playing normally.
     // First, check if move exists in children (Navigation)
@@ -3175,8 +3186,27 @@ export const useGameStore = create<GameStore>((set, get) => ({
     );
 
     if (existingChild && !isLoad) {
-       // Navigate to existing child
+       // Replaying an undone move may select an already-created branch node.
+       // Treat it like a real play action: provide feedback and hand the turn
+       // back to the AI when appropriate.
+       if (state.settings.soundEnabled) playStoneSound();
        get().jumpToNode(existingChild);
+       const nextState = get();
+       if (nextState.settings.soundEnabled) {
+         const capturedCount = state.currentPlayer === 'white'
+           ? nextState.capturedBlack - state.capturedBlack
+           : nextState.capturedWhite - state.capturedWhite;
+         if (capturedCount > 0) setTimeout(() => playCaptureSound(capturedCount), 100);
+       }
+       if (nextState.isAiPlaying && nextState.currentPlayer === nextState.aiColor) {
+         const scheduledEpoch = aiRequestEpoch;
+         const scheduledNodeId = nextState.currentNode.id;
+         setTimeout(() => {
+           const latest = get();
+           if (aiRequestEpoch !== scheduledEpoch || latest.currentNode.id !== scheduledNodeId) return;
+           if (!latest.isAiThinking) void latest.makeAiMove();
+         }, 500);
+       }
        return;
     }
 
@@ -3246,7 +3276,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!isLoad) {
       const newState = get();
       if (newState.isAiPlaying && newState.currentPlayer === newState.aiColor) {
-        setTimeout(() => get().makeAiMove(), 500);
+        const scheduledEpoch = aiRequestEpoch;
+        const scheduledNodeId = newState.currentNode.id;
+        setTimeout(() => {
+          const latest = get();
+          if (aiRequestEpoch !== scheduledEpoch || latest.currentNode.id !== scheduledNodeId) return;
+          if (!latest.isAiThinking) void latest.makeAiMove();
+        }, 500);
       }
 	      if (newState.isAnalysisMode && !newState.isSelfplayToEnd) {
 	          setTimeout(() => void get().runAnalysis(), 500);
@@ -3264,9 +3300,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
 	        if (state.currentPlayer !== state.aiColor) return;
 	      }
 
-	      const node = state.currentNode;
-	      const nodeId = node.id;
-	      const playerAtStart = state.currentPlayer;
+      const node = state.currentNode;
+      const nodeId = node.id;
+      const playerAtStart = state.currentPlayer;
+      const requestEpoch = aiRequestEpoch;
+      const isCurrentRequest = (): boolean => aiRequestEpoch === requestEpoch;
 
 	      const parentBoard = node.parent?.gameState.board;
 	      const grandparentBoard = node.parent?.parent?.gameState.board;
@@ -3302,10 +3340,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       let timedOut = false;
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
       const finishFromCurrentKataGo = () => {
-        if (timedOut) return;
+        if (timedOut || !isCurrentRequest()) return;
         timedOut = true;
         set({ isAiThinking: false });
         const latest = get();
+        if (latest.currentNode.id !== nodeId) return;
         if (latest.currentPlayer !== playerAtStart) return;
         const top = latest.currentNode.analysis?.moves?.[0] ?? latest.analysisData?.moves?.[0];
         if (top && top.x >= 0 && top.y >= 0 && isValidMove(latest.board, top.x, top.y, playerAtStart, parentBoard)) {
@@ -3392,6 +3431,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           set({ engineBackend: engineInfo.backend, engineModelName: engineInfo.modelName });
 
           const latest = get();
+          if (!isCurrentRequest()) return;
           if (latest.currentNode.id !== nodeId) return;
           if (latest.currentPlayer !== playerAtStart) return;
           if (!force && (!latest.isAiPlaying || latest.aiColor !== playerAtStart)) return;
@@ -4032,12 +4072,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
           const chosen = chooseByStrategy();
           if (!chosen) {
             makeHeuristicMove(get());
+            set({ isAiThinking: false });
             return;
           }
           if (chosen.x === -1 || chosen.y === -1) get().passTurn();
           else get().playMove(chosen.x, chosen.y);
 
           const after = get();
+          // playMove invalidates the request epoch because it changes the
+          // visible position; the move itself has already been committed.
+          set({ isAiThinking: false });
           after.currentNode.aiThoughts = chosen.thoughts;
           set((s) => ({ treeVersion: s.treeVersion + 1 }));
         })
@@ -4045,6 +4089,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           if (timedOut) return;
           if (isAnalysisCanceled(err)) {
             const latest = get();
+            if (!isCurrentRequest()) return;
             if (latest.currentNode.id !== nodeId) return;
             if (latest.currentPlayer !== playerAtStart) return;
             if (!force && (!latest.isAiPlaying || latest.aiColor !== playerAtStart)) return;
@@ -4052,17 +4097,44 @@ export const useGameStore = create<GameStore>((set, get) => ({
             setTimeout(() => latest.makeAiMove(force ? { force: true } : undefined), 100);
             return;
           }
-          makeHeuristicMove(get());
+          const latest = get();
+          if (!isCurrentRequest() || latest.currentNode.id !== nodeId || latest.currentPlayer !== playerAtStart) return;
+          makeHeuristicMove(latest);
+          set({ isAiThinking: false });
         })
         .finally(() => {
           if (timeoutId) clearTimeout(timeoutId);
-          if (!retryScheduled) set({ isAiThinking: false });
+          if (!retryScheduled && isCurrentRequest()) set({ isAiThinking: false });
         });
   },
 
-  undoMove: () => get().navigateBack(),
+  undoMove: () => {
+    // A take-back invalidates any in-flight engine result.  Otherwise the old
+    // request can either overwrite the new position or leave the game stuck
+    // after its node-id guard rejects the result.
+    invalidateAiRequests('Undo move');
+    set({ isAiThinking: false });
+    const before = get();
+    if (!before.currentNode.parent) return;
+    const lastMover = before.currentNode.move?.player ?? null;
+    const undoTwice = !!before.isAiPlaying && !!before.aiColor && lastMover === before.aiColor && before.currentPlayer !== before.aiColor;
+    before.navigateBack();
+    if (undoTwice) get().navigateBack();
+    const after = get();
+    if (after.isAiPlaying && after.aiColor && after.currentPlayer === after.aiColor) {
+      setTimeout(() => {
+        const latest = get();
+        if (latest.isAiPlaying && latest.aiColor && latest.currentPlayer === latest.aiColor && !latest.isAiThinking) {
+          void latest.makeAiMove();
+        }
+      }, 0);
+    }
+  },
 
-  navigateBack: () => set((state) => {
+  navigateBack: () => {
+    invalidateAiRequests('Position changed');
+    set({ isAiThinking: false });
+    return set((state) => {
     if (state.isInsertMode && state.currentNode.parent && state.insertAfterNodeId) {
       const insertAfter = findNodeById(state.rootNode, state.insertAfterNodeId);
       if (insertAfter) {
@@ -4104,9 +4176,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
         isAiPlaying: state.isAiPlaying,
         aiColor: state.aiColor
     };
-  }),
+    });
+  },
 
-  navigateForward: () => set((state) => {
+  navigateForward: () => {
+    invalidateAiRequests('Navigated forward');
+    return set((state) => {
       const nextNode = getActiveChild(state.currentNode, state.activeBranchChildIds);
       if (!nextNode) return {};
       return {
@@ -4119,9 +4194,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
           analysisData: nextNode.analysis || null,
           activeBranchChildIds: rememberActiveBranchPath(state.activeBranchChildIds, nextNode),
       };
-  }),
+    });
+  },
 
-  navigateStart: () => set((state) => {
+  navigateStart: () => {
+    invalidateAiRequests('Navigated to start');
+    return set((state) => {
       let node = state.currentNode;
       while (node.parent) {
           node = node.parent;
@@ -4135,9 +4213,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
           capturedWhite: node.gameState.capturedWhite,
           analysisData: node.analysis || null,
       };
-  }),
+    });
+  },
 
-  navigateEnd: () => set((state) => {
+  navigateEnd: () => {
+    invalidateAiRequests('Navigated to end');
+    return set((state) => {
       let node = state.currentNode;
       let activeBranchChildIds = state.activeBranchChildIds;
       while (node.children.length > 0) {
@@ -4156,9 +4237,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
           analysisData: node.analysis || null,
           activeBranchChildIds,
       };
-  }),
+    });
+  },
 
-  switchBranch: (direction) => set((state) => {
+  switchBranch: (direction) => {
+    invalidateAiRequests('Switched branch');
+    return set((state) => {
       const next = findSiblingBranchTarget(state.currentNode, direction);
       if (!next) return {};
 
@@ -4172,9 +4256,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
           analysisData: next.analysis || null,
           activeBranchChildIds: rememberActiveBranchPath(state.activeBranchChildIds, next),
       };
-  }),
+    });
+  },
 
-  switchToBranchIndex: (index) => set((state) => {
+  switchToBranchIndex: (index) => {
+    invalidateAiRequests('Switched branch');
+    return set((state) => {
       const next = findBranchTargetByIndex(state.currentNode, index);
       if (!next) return { notification: { message: 'Branch number unavailable.', type: 'info' } };
 
@@ -4188,9 +4275,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
           analysisData: next.analysis || null,
           activeBranchChildIds: rememberActiveBranchPath(state.activeBranchChildIds, next),
       };
-  }),
+    });
+  },
 
-  navigateToMove: (moveNumber) => set((state) => {
+  navigateToMove: (moveNumber) => {
+    invalidateAiRequests('Navigated to move');
+    return set((state) => {
       const target = findCurrentLineMoveTarget(state.currentNode, moveNumber, state.activeBranchChildIds);
       if (!target || target.id === state.currentNode.id) return {};
 
@@ -4204,9 +4294,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
           analysisData: target.analysis || null,
           activeBranchChildIds: rememberActiveBranchPath(state.activeBranchChildIds, target),
       };
-  }),
+    });
+  },
 
-  undoToBranchPoint: () => set((state) => {
+  undoToBranchPoint: () => {
+    invalidateAiRequests('Undo to branch point');
+    set({ isAiThinking: false });
+    return set((state) => {
       let node = state.currentNode;
       while (node.parent) {
           node = node.parent;
@@ -4222,9 +4316,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
           capturedWhite: node.gameState.capturedWhite,
           analysisData: node.analysis || null,
       };
-  }),
+    });
+  },
 
-  undoToMainBranch: () => set((state) => {
+  undoToMainBranch: () => {
+    invalidateAiRequests('Undo to main branch');
+    set({ isAiThinking: false });
+    return set((state) => {
       let node = state.currentNode;
       let lastBranchingNode = node;
       while (node.parent) {
@@ -4244,7 +4342,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
           capturedWhite: lastBranchingNode.gameState.capturedWhite,
           analysisData: lastBranchingNode.analysis || null,
       };
-  }),
+    });
+  },
 
   makeCurrentNodeMainBranch: () => set((state) => {
       const selected = state.currentNode;
@@ -4475,7 +4574,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       };
   }),
 
-  jumpToNode: (node: GameNode) => set((state) => {
+  jumpToNode: (node: GameNode) => {
+    invalidateAiRequests('Navigated to node');
+    return set((state) => {
       // Just set current node and sync state
       return {
           currentNode: node,
@@ -4487,7 +4588,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
           analysisData: node.analysis || null,
           activeBranchChildIds: rememberActiveBranchPath(state.activeBranchChildIds, node),
       };
-  }),
+    });
+  },
 
   pinCurrentVariation: () => set((state) => {
     const node = state.currentNode;
@@ -4556,6 +4658,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   startNewGame: ({ komi, rules, boardSize, handicap }) => {
     const state = get();
+    invalidateAiRequests('Started new game');
     get().stopSelfplayToEnd();
     get().stopGameAnalysis();
     analysisQueue.cancelWhere(() => true, 'Started new game');
@@ -4632,6 +4735,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   resetGame: () => {
     const state = get();
+    invalidateAiRequests('Reset game');
     get().stopSelfplayToEnd();
     get().stopGameAnalysis();
     analysisQueue.cancelWhere(() => true, 'Reset game');
@@ -4982,6 +5086,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 		  },
 
   passTurn: () => {
+      invalidateAiRequests('Position changed by pass');
       const state = get();
       if (state.settings.soundEnabled) {
         playPassSound();
@@ -5038,6 +5143,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   resign: (player) => {
+    invalidateAiRequests('Game resigned');
     const state = get();
     const endState = getResignResult(player ?? state.currentPlayer);
     state.currentNode.endState = endState;

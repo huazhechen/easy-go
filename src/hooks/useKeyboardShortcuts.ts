@@ -65,6 +65,7 @@ export function useKeyboardShortcuts({
     passTurn,
     rotateBoard,
     navigateBack,
+    undoMove,
     navigateForward,
     navigateStart,
     navigateEnd,
@@ -99,6 +100,7 @@ export function useKeyboardShortcuts({
       passTurn: state.passTurn,
       rotateBoard: state.rotateBoard,
       navigateBack: state.navigateBack,
+      undoMove: state.undoMove,
       navigateForward: state.navigateForward,
       navigateStart: state.navigateStart,
       navigateEnd: state.navigateEnd,
@@ -494,11 +496,7 @@ export function useKeyboardShortcuts({
         if (matches('nav-back-10')) jumpBack(10);
         else {
           if (mode === 'play') {
-            const st = useGameStore.getState();
-            const lastMover = st.currentNode.move?.player ?? null;
-            const shouldUndoTwice = !!st.isAiPlaying && !!st.aiColor && lastMover === st.aiColor && st.currentPlayer !== st.aiColor;
-            navigateBack();
-            if (shouldUndoTwice) navigateBack();
+            undoMove();
           } else {
             navigateBack();
           }
