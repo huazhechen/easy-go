@@ -17,8 +17,11 @@ export function useDisplayWinRate(args: {
   const [fallbackWinRate, setFallbackWinRate] = useState(0.5);
   // KataGo can publish an initial 50% placeholder before the first search
   // visits arrive; that frame must not overwrite the previous estimate.
+  // 0 visits is the network-only quick read, which is a real estimate.
   const analyzed =
-    typeof rawWinRate === 'number' && Number.isFinite(rawWinRate) && (rootVisits == null || rootVisits > 1)
+    typeof rawWinRate === 'number'
+    && Number.isFinite(rawWinRate)
+    && (rootVisits == null || rootVisits === 0 || rootVisits > 1)
       ? clamp01(rawWinRate)
       : null;
 

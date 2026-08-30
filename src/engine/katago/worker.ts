@@ -5,7 +5,7 @@ import '@tensorflow/tfjs-backend-webgpu';
 import '@tensorflow/tfjs-backend-wasm';
 import { setThreadsCount, setWasmPaths } from '@tensorflow/tfjs-backend-wasm';
 
-import type { KataGoWorkerRequest, KataGoWorkerResponse } from './types';
+import type { KataGoAnalysisPayload, KataGoWorkerRequest, KataGoWorkerResponse } from './types';
 import { looksLikeMarkup, modelResponseError } from './modelResponse';
 import type { GameRules, KataGoBackendPreference } from '../../types';
 import { publicUrl } from '../../utils/publicUrl';
@@ -72,6 +72,7 @@ let searchKey: {
   conservativePass: boolean;
 } | null = null;
 let latestAnalyzeId = 0;
+let latestQuickEvalId = 0;
 
 // TensorFlow promises resume as microtasks. An extended search that only awaits
 // those promises can starve worker message events, preventing a newer position
@@ -352,6 +353,93 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
       backend: tf.getBackend(),
       modelName: loadedModelName,
     });
+    return;
+  }
+
+  if (msg.type === 'katago:quick_eval') {
+    // One batched network forward pass, no MCTS search. A newer quick eval
+    // makes an older one stale, so per-move evaluations never pile up.
+    const isStale = () => latestQuickEvalId !== msg.id;
+    const postCanceled = () =>
+      post({
+        type: 'katago:analyze_result',
+        id: msg.id,
+        ok: false,
+        canceled: true,
+        error: 'canceled',
+      });
+    if (isStale()) {
+      postCanceled();
+      return;
+    }
+
+    await ensureModel(msg.modelUrl, msg.backend);
+    if (!model) throw new Error('Model not loaded');
+    if (isStale()) {
+      postCanceled();
+      return;
+    }
+
+    ensureBoardSizeForWorker(msg.board.length);
+    const boardSize = BOARD_SIZE;
+    const rules: GameRules = msg.rules === 'chinese' ? 'chinese' : msg.rules === 'korean' ? 'korean' : 'japanese';
+    const quick = await MctsSearch.create({
+      model,
+      board: msg.board,
+      previousBoard: msg.previousBoard,
+      previousPreviousBoard: msg.previousPreviousBoard,
+      currentPlayer: msg.currentPlayer,
+      moveHistory: msg.moveHistory,
+      komi: msg.komi,
+      rules,
+      nnRandomize: false,
+      conservativePass: true,
+      maxChildren: boardSize * boardSize,
+      ownershipMode: 'root',
+      wideRootNoise: 0,
+      rootPolicyTemperature: 1.0,
+      fillDameBeforePass: true,
+      rootSymmetrySamples: rootSymmetrySamplesForBackend(tf.getBackend()),
+    });
+    if (isStale()) {
+      postCanceled();
+      return;
+    }
+
+    const analysis = quick.getAnalysis({
+      topK: 3,
+      analysisPvLen: 4,
+      includeMovesOwnership: false,
+      cloneBuffers: true,
+      ownershipRefreshIntervalMs: 0,
+    });
+    const payload: KataGoAnalysisPayload = {
+      ...analysis,
+      // No search ran, so the search-root stats are still the 50% placeholder;
+      // surface the network's own read of the position instead.
+      rootWinRate: analysis.rawWinRate ?? analysis.rootWinRate,
+      rootScoreLead: analysis.rawScoreLead ?? analysis.rootScoreLead,
+      rootVisits: 0,
+      moves: [],
+    };
+    const transfer: Transferable[] = [];
+    const push = (value?: unknown) => {
+      if (value && ArrayBuffer.isView(value)) transfer.push(value.buffer);
+    };
+    push(payload.ownership);
+    push(payload.ownershipStdev);
+    push(payload.policy);
+    post(
+      {
+        type: 'katago:analyze_result',
+        id: msg.id,
+        ok: true,
+        backend: tf.getBackend(),
+        modelName: loadedModelName,
+        analysis: payload,
+      },
+      transfer
+    );
     return;
   }
 
@@ -640,6 +728,8 @@ self.onmessage = (ev: MessageEvent<KataGoWorkerRequest>) => {
   const msg = ev.data;
   if (msg.type === 'katago:analyze') {
     latestAnalyzeId = msg.id;
+  } else if (msg.type === 'katago:quick_eval') {
+    latestQuickEvalId = msg.id;
   }
   queue = queue
     .then(() => handleMessage(msg))
@@ -660,6 +750,14 @@ self.onmessage = (ev: MessageEvent<KataGoWorkerRequest>) => {
           error: err instanceof Error ? err.message : String(err),
         });
         return;
+      }
+      if (msg.type === 'katago:quick_eval') {
+        post({
+          type: 'katago:analyze_result',
+          id: msg.id,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     });
 };

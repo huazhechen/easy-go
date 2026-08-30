@@ -260,6 +260,45 @@ class KataGoEngineClient {
     return promise;
   }
 
+  /** One network forward pass with no search: raw win rate, score read, ownership. */
+  async quickEval(args: {
+    modelUrl: string;
+    backend?: KataGoBackendPreference;
+    board: BoardState;
+    previousBoard?: BoardState;
+    previousPreviousBoard?: BoardState;
+    currentPlayer: Player;
+    moveHistory: Move[];
+    komi: number;
+    rules?: GameRules;
+  }): Promise<Analysis> {
+    this.rejectIfCrashed();
+    const id = this.nextId++;
+    const req: Extract<KataGoWorkerRequest, { type: 'katago:quick_eval' }> = {
+      type: 'katago:quick_eval',
+      id,
+      modelUrl: args.modelUrl,
+      backend: args.backend,
+      board: args.board,
+      previousBoard: args.previousBoard,
+      previousPreviousBoard: args.previousPreviousBoard,
+      currentPlayer: args.currentPlayer,
+      moveHistory: takeLastMoves(args.moveHistory),
+      komi: args.komi,
+      rules: args.rules,
+    };
+    const promise = new Promise<Analysis>((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+    });
+    try {
+      this.postToWorker(req);
+    } catch (err) {
+      this.pending.delete(id);
+      throw err;
+    }
+    return promise;
+  }
+
 }
 
 let singleton: KataGoEngineClient | null = null;

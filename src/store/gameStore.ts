@@ -71,6 +71,8 @@ interface GameStore extends GameState {
   isAnalysisMode: boolean;
   isContinuousAnalysis: boolean;
   analysisData: AnalysisResult | null;
+  /** Network-only read (no search) for the node it was computed on. */
+  quickEvalData: { nodeId: string; result: AnalysisResult } | null;
   settings: GameSettings;
   engineStatus: 'idle' | 'loading' | 'ready' | 'error';
   engineError: string | null;
@@ -90,6 +92,7 @@ interface GameStore extends GameState {
   jumpToNode: (node: GameNode) => void; // Navigate to arbitrary node
   passTurn: () => void;
   runAnalysis: (opts?: AnalysisRequestOptions) => Promise<void>;
+  runQuickEval: () => Promise<AnalysisResult | null>;
   updateSettings: (newSettings: Partial<GameSettings>) => void;
   startNewGame: (opts: { komi: number; rules: GameRules; boardSize: BoardSize; handicap: number }) => void;
 }
@@ -130,6 +133,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   isAnalysisMode: false,
   isContinuousAnalysis: false,
   analysisData: null,
+  quickEvalData: null,
   settings: initialSettings,
   engineStatus: 'idle',
   engineError: null,
@@ -412,6 +416,47 @@ export const useGameStore = create<GameStore>((set, get) => ({
         });
         if (opts?.propagateErrors) throw err;
       });
+  },
+
+  runQuickEval: async () => {
+    const state = get();
+    const node = state.currentNode;
+    const boardSize = getBoardSizeFromBoard(state.board);
+    const modelUrl = resolveModelUrlForFetch(state.settings.katagoModelUrl);
+    const parentBoard = node.parent?.gameState.board;
+    const grandparentBoard = node.parent?.parent?.gameState.board;
+    if (!getKataGoEngineClient().getEngineInfo().backend) {
+      set({ engineStatus: 'loading', engineError: null });
+    }
+    try {
+      const payload = await getKataGoEngineClient().quickEval({
+        modelUrl,
+        backend: state.settings.katagoBackend,
+        board: state.board,
+        previousBoard: parentBoard,
+        previousPreviousBoard: grandparentBoard,
+        currentPlayer: state.currentPlayer,
+        moveHistory: state.moveHistory,
+        komi: komiWithHandicapBonus(state.rootNode.gameState.board, state.settings.gameRules, state.komi),
+        rules: state.settings.gameRules,
+      });
+      const latest = get();
+      if (latest.currentNode.id !== node.id) return null;
+      const result = buildAnalysisResult(payload, ownershipToTerritoryGrid(payload.ownership, boardSize), 'root');
+      const engineInfo = getKataGoEngineClient().getEngineInfo();
+      set({
+        quickEvalData: { nodeId: node.id, result },
+        engineStatus: engineInfo.backend ? 'ready' : latest.engineStatus,
+        engineBackend: engineInfo.backend ?? latest.engineBackend,
+        engineError: null,
+      });
+      return result;
+    } catch (err) {
+      if (isAnalysisCanceled(err)) return null;
+      const msg = err instanceof Error ? err.message : String(err);
+      set({ engineStatus: 'error', engineError: msg });
+      return null;
+    }
   },
 
   updateSettings: (newSettings) =>

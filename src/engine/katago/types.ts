@@ -50,6 +50,25 @@ export interface KataGoAnalyzeRequest {
   ownershipMode?: 'root' | 'tree';
 }
 
+/**
+ * One network forward pass, no MCTS search: the raw win rate, score read and
+ * ownership map straight from the net. Cheap enough to run on every position
+ * change; precise estimates still need the search-based analyze path.
+ */
+export interface KataGoQuickEvalRequest {
+  type: 'katago:quick_eval';
+  id: number;
+  modelUrl: string;
+  backend?: KataGoBackendPreference;
+  board: BoardState;
+  previousBoard?: BoardState;
+  previousPreviousBoard?: BoardState;
+  currentPlayer: Player;
+  moveHistory: Move[];
+  komi: number;
+  rules?: GameRules;
+}
+
 export interface KataGoAnalysisPayload {
   rootWinRate: number;
   rootScoreLead: number;
@@ -118,5 +137,5 @@ export interface KataGoAnalyzeResponse {
   error?: string;
 }
 
-export type KataGoWorkerRequest = KataGoInitRequest | KataGoAnalyzeRequest;
+export type KataGoWorkerRequest = KataGoInitRequest | KataGoAnalyzeRequest | KataGoQuickEvalRequest;
 export type KataGoWorkerResponse = KataGoInitResponse | KataGoAnalyzeUpdate | KataGoAnalyzeResponse;

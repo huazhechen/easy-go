@@ -48,6 +48,8 @@
 .battle-actions button { min-height:48px; }.header-tools { min-height:44px; }
 @media (max-width:430px) { .board-wrap { width:100%; margin-left:0; margin-right:0; padding-inline:8px; } }
 .dialog-options button { min-height:44px; }.dialog-title button { min-width:44px; min-height:44px; }
+.new-game-dialog .dialog-options button:disabled { opacity:.45; cursor:not-allowed; }
+.new-game-dialog .selfplay-model-note { color:#8c9992; font-size:11px; font-weight:600; margin-top:-6px; }
 .battle-header h1 { font-size:18px; letter-spacing:.02em; margin:0; }.battle-header { align-items:center; margin-bottom:14px; }
 .match-score small { display:none; }.turn-mark { width:7px; height:7px; border-radius:50%; background:#39ad70; margin-left:auto; font-size:0; }.turn-mark:not(.active) { opacity:0; }
 .header-tools { display:flex; align-items:center; gap:8px; color:#5f7180; font-size:12px; font-weight:700; }.thinking-spinner { width:13px; height:13px; border:2px solid #c6d4df; border-top-color:#1d5c96; border-radius:50%; animation:easygo-spin .75s linear infinite; }@keyframes easygo-spin { to { transform:rotate(360deg); } }
@@ -227,6 +229,7 @@
   box-shadow: 0 2px 6px rgba(70,45,20,.28) !important;
 }
 .battle-shell .score-toggle.active,
+.battle-shell .score-toggle.peek,
 .battle-shell .recommendation-toggle.active,
 .battle-shell .recommendation-toggle.peek,
 .battle-shell .dialog-options button.selected {
@@ -237,6 +240,9 @@
 .battle-shell .recommendation-label.flashing {
   animation: recommendation-peek-flash 1.2s ease-in-out infinite alternate;
 }
+.battle-shell .score-label.flashing {
+  animation: recommendation-peek-flash 1.2s ease-in-out infinite alternate;
+}
 @keyframes recommendation-peek-flash {
   from { color: #000; }
   to { color: #fff; }
@@ -244,6 +250,9 @@
 .battle-shell button.score-toggle.active:hover,
 .battle-shell button.score-toggle.active:focus,
 .battle-shell button.score-toggle.active:focus-visible,
+.battle-shell button.score-toggle.peek:hover,
+.battle-shell button.score-toggle.peek:focus,
+.battle-shell button.score-toggle.peek:focus-visible,
 .battle-shell button.recommendation-toggle.active:hover,
 .battle-shell button.recommendation-toggle.active:focus,
 .battle-shell button.recommendation-toggle.active:focus-visible,

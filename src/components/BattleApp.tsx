@@ -3,7 +3,7 @@ import { FaRedo } from 'react-icons/fa';
 import { useShallow } from 'zustand/react/shallow';
 import { useGameStore } from '../store/gameStore';
 import type { BoardSize, Player } from '../types';
-import { defaultThinkingForTier, getModelTier } from '../engine/katago/modelDefaults';
+import { defaultThinkingForTier, getModelTier, type KataGoModelTierId } from '../engine/katago/modelDefaults';
 import { formatIterations, formatThinkingMs } from '../utils/format';
 import { countTerritoryPoints } from '../utils/territoryScore';
 import { useDisplayWinRate } from '../hooks/useDisplayWinRate';
@@ -28,6 +28,7 @@ export function BattleApp() {
     capturedBlack,
     capturedWhite,
     analysisData,
+    quickEvalData,
     settings,
     engineStatus,
     isAiThinking,
@@ -43,6 +44,7 @@ export function BattleApp() {
     playMove,
     passTurn,
     undoMove,
+    runQuickEval,
     toggleContinuousAnalysis,
   } = useGameStore(useShallow((state) => ({
     board: state.board,
@@ -52,6 +54,7 @@ export function BattleApp() {
     capturedBlack: state.capturedBlack,
     capturedWhite: state.capturedWhite,
     analysisData: state.analysisData,
+    quickEvalData: state.quickEvalData,
     settings: state.settings,
     engineStatus: state.engineStatus,
     isAiThinking: state.isAiThinking,
@@ -67,6 +70,7 @@ export function BattleApp() {
     playMove: state.playMove,
     passTurn: state.passTurn,
     undoMove: state.undoMove,
+    runQuickEval: state.runQuickEval,
     toggleContinuousAnalysis: state.toggleContinuousAnalysis,
   })));
 
@@ -97,13 +101,20 @@ export function BattleApp() {
   const aiThinkingName = `${model.selectedModelLabel}-${formatThinkingMs(model.thinkingMs)}`;
   const blackSideName = selfPlay ? '黑' : humanColor === 'black' ? '你' : aiThinkingName;
   const whiteSideName = selfPlay ? '白' : humanColor === 'white' ? '你' : aiThinkingName;
+  // Prefer the current node's search result; otherwise fall back to the
+  // network-only quick read so the self-play win rate stays live with hints
+  // off.
+  const currentAnalysis = analysisData === currentNode.analysis ? analysisData : null;
+  const currentQuickEval = quickEvalData?.nodeId === currentNode.id ? quickEvalData.result : null;
+  const displayAnalysis = currentAnalysis ?? currentQuickEval;
   const displayWinRate = useDisplayWinRate({
-    rawWinRate: analysisData?.rootWinRate ?? currentNode.analysis?.rootWinRate,
-    rootVisits: analysisData?.rootVisits,
+    rawWinRate: displayAnalysis?.rootWinRate ?? currentNode.analysis?.rootWinRate,
+    rootVisits: displayAnalysis?.rootVisits ?? currentNode.analysis?.rootVisits,
     isRoot: !currentNode.parent,
     positionKey: currentNode.id,
   });
-  const territoryPoints = countTerritoryPoints(analysisData?.territory ?? [], capturedBlack, capturedWhite, 6.5);
+  const judgedTerritory = currentAnalysis?.territory ?? currentQuickEval?.territory ?? [];
+  const territoryPoints = countTerritoryPoints(judgedTerritory, capturedBlack, capturedWhite, 6.5);
 
   // Recommendations calculate automatically, but remain hidden until the
   // player explicitly enables their display.
@@ -168,6 +179,13 @@ export function BattleApp() {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  // Network-only read on every position change in self-play with hints off:
+  // it is cheap and keeps the match-card win rate live without the search.
+  useEffect(() => {
+    if (!selfPlay || hintMode !== 'off' || isAiThinking) return;
+    void runQuickEval();
+  }, [currentNode.id, selfPlay, hintMode, isAiThinking, runQuickEval]);
+
   useEffect(() => {
     if (!consecutivePasses) return;
     endScoreGame();
@@ -188,9 +206,12 @@ export function BattleApp() {
   };
 
   const newGame = async (draft: NewGameDraft) => {
-    const tier = getModelTier(draft.modelTier);
-    const tierThinkingMs = draft.thinkingMsByTier[draft.modelTier] ?? defaultThinkingForTier(tier);
-    const confirmed = await model.confirmModelSelection(draft.modelTier, tierThinkingMs);
+    // Self-play is locked to the bundled B10 model regardless of what the
+    // dialog draft holds.
+    const tierId: KataGoModelTierId = draft.selfPlay ? 'b10' : draft.modelTier;
+    const tier = getModelTier(tierId);
+    const tierThinkingMs = draft.thinkingMsByTier[tierId] ?? defaultThinkingForTier(tier);
+    const confirmed = await model.confirmModelSelection(tierId, tierThinkingMs);
     if (!confirmed) return;
     setSize(draft.boardSize);
     setHumanColor(draft.humanColor);
@@ -211,7 +232,6 @@ export function BattleApp() {
   const showThinkingSpinner = isContinuousAnalysis && engineStatus === 'loading' && !(analysisData?.moves?.length);
   const showBoardLoading =
     (initialLoading && !isAiThinking && engineStatus === 'loading')
-    || score.loading
     || (hintMode !== 'off' && hintLoading);
 
   return (
@@ -245,7 +265,7 @@ export function BattleApp() {
           hints={topMoves}
           hintMode={hintMode}
           showTerritory={scoreTerritoryVisible}
-          territory={analysisData?.territory ?? []}
+          territory={judgedTerritory}
           thinkingActive={isAiThinking || opponentTurn}
           thinkingTimeMs={settings.katagoMaxTimeMs}
           canInteract={!opponentTurn && !isAiThinking}
@@ -256,7 +276,7 @@ export function BattleApp() {
           <div className="board-loading"><div className="loading-track"><i /></div><span>模型下载中（B18）{model.downloadPercent()}%</span></div>
         )}
         {model.downloadPhase !== 'downloading' && showBoardLoading && (
-          <div className="board-loading"><div className="loading-track"><i /></div><span>{score.loading ? 'AI 判定中…' : hintLoading ? 'AI 计算中…' : `模型加载中（${model.selectedModelLabel}）…`}</span></div>
+          <div className="board-loading"><div className="loading-track"><i /></div><span>{hintLoading ? 'AI 计算中…' : `模型加载中（${model.selectedModelLabel}）…`}</span></div>
         )}
       </section>
 
@@ -264,13 +284,13 @@ export function BattleApp() {
         canUndo={moveHistory.length > 0}
         disabled={!selfPlay && (opponentTurn || isAiThinking)}
         lastMoveWasPass={lastMoveWasPass}
-        scoreActive={!!score.result && score.territoryVisible}
         hintMode={hintMode}
+        scoreMode={score.scoreMode}
         recommendationLabel={recommendationLabel}
         showThinkingSpinner={showThinkingSpinner}
         onUndo={undoMove}
         onPass={handlePass}
-        onScore={() => void score.openScore()}
+        onCycleScore={score.cycleScoreMode}
         onCycleHints={cycleHintMode}
       />
 

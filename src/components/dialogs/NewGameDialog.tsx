@@ -53,6 +53,13 @@ export function NewGameDialog({
     setDraftThinkingMsByTier((prev) => ({ ...prev, [draftModelTier]: ms }));
   };
 
+  // Self-play always uses the bundled B10 model; the model selector is
+  // disabled so the pair can never depend on a 96 MB download.
+  const selectSelfPlay = () => {
+    setDraftSelfPlay(true);
+    setDraftModelTier('b10');
+  };
+
   const start = () => {
     onStart({
       boardSize: draftSize,
@@ -84,7 +91,7 @@ export function NewGameDialog({
           <button className={draftHumanColor === 'white' && !draftSelfPlay ? 'selected' : ''} onClick={() => { setDraftHumanColor('white'); setDraftSelfPlay(false); }}>
             <span className="dialog-stone white-stone" />执白
           </button>
-          <button className={draftSelfPlay ? 'selected' : ''} onClick={() => setDraftSelfPlay(true)}>
+          <button className={draftSelfPlay ? 'selected' : ''} onClick={selectSelfPlay}>
             <span className="dialog-stone black-stone" /><span className="dialog-stone white-stone" />自弈
           </button>
         </div></label>
@@ -93,6 +100,7 @@ export function NewGameDialog({
             <button
               key={tier.id}
               className={draftModelTier === tier.id ? 'selected' : ''}
+              disabled={draftSelfPlay}
               onClick={() => setDraftModelTier(tier.id)}
               title={`${tier.modelName} · 思考 ${tier.minThinkingMs / 1000}–${tier.maxThinkingMs / 1000} 秒`}
             >
@@ -101,6 +109,7 @@ export function NewGameDialog({
             </button>
           ))}
         </div>
+        {draftSelfPlay && <small className="selfplay-model-note">自弈固定使用 B10 模型</small>}
         <input
           type="range"
           className="thinking-slider"
