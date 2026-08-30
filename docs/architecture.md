@@ -61,6 +61,8 @@ three sibling modules:
   root-property helpers.
 - `src/store/analysis.ts` — continuous-search scheduling, queue priorities,
   and AI-request epoch invalidation.
+- `src/store/aiPlayer.ts` — AI turn orchestration: thinking delay, waiting for
+  candidate moves, playing the top move or passing, and scheduling.
 
 ## Engine Boundary
 

@@ -15,7 +15,6 @@ import { playStoneSound, playCaptureSound, playPassSound, playNewGameSound } fro
 import { formatSgfDate } from '../utils/sgf';
 import { getKataGoEngineClient } from '../engine/katago/client';
 import type { KataGoAnalysisPayload } from '../engine/katago/types';
-import { ENGINE_MAX_TIME_MS } from '../engine/katago/limits';
 import { createEmptyBoard, getMaxHandicap, normalizeBoardSize } from '../utils/boardSize';
 import {
   ANALYSIS_QUEUE_PRIORITY,
@@ -26,7 +25,6 @@ import {
   CONTINUOUS_POSITION_MAX_TIME_MS,
   analysisCacheKey,
   continuousSearchMsByNodeId,
-  getAiRequestEpoch,
   invalidateAiRequests,
   invalidateContinuousAnalysis,
   isAnalysisCanceled,
@@ -52,6 +50,7 @@ import {
   parentAnalysisPositionKey,
   syncRootSetupPropertiesFromBoard,
 } from './gameTree';
+import { runAiMove, scheduleAiMove } from './aiPlayer';
 import { initialSettings, resolveModelUrlForFetch, rulesToSgfRu, saveStoredSettings } from './settings';
 import { analysisQueue } from '../utils/analysisQueue';
 import { rememberActiveBranchPath, type ActiveBranchMap } from '../utils/branchNavigation';
@@ -96,16 +95,6 @@ interface GameStore extends GameState {
   updateSettings: (newSettings: Partial<GameSettings>) => void;
   startNewGame: (opts: { komi: number; rules: GameRules; boardSize: BoardSize; handicap: number }) => void;
 }
-
-const scheduleAiMove = (getStore: () => GameStore, delayMs: number): void => {
-  const scheduledEpoch = getAiRequestEpoch();
-  const scheduledNodeId = getStore().currentNode.id;
-  setTimeout(() => {
-    const latest = getStore();
-    if (getAiRequestEpoch() !== scheduledEpoch || latest.currentNode.id !== scheduledNodeId) return;
-    if (!latest.isAiThinking) void latest.makeAiMove();
-  }, delayMs);
-};
 
 const clearAnalysisTree = (node: GameNode): void => {
   node.analysis = null;
@@ -575,37 +564,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
   },
 
-  makeAiMove: (opts) => {
-    const force = opts?.force ?? false;
-    const initial = get();
-    if (!force && (!initial.isAiPlaying || !initial.aiColor || initial.currentPlayer !== initial.aiColor)) return;
-    const nodeId = initial.currentNode.id;
-    const playerAtStart = initial.currentPlayer;
-    const epoch = getAiRequestEpoch();
-    const thinkingMs = Math.max(25, Math.min(initial.settings.katagoMaxTimeMs, ENGINE_MAX_TIME_MS));
-    set({ isAiThinking: true, isAnalysisMode: true });
-    if (!initial.isContinuousAnalysis) get().toggleContinuousAnalysis();
-    void (async () => {
-      await sleep(thinkingMs);
-      while (true) {
-        const latest = get();
-        if (getAiRequestEpoch() !== epoch || latest.currentNode.id !== nodeId || latest.currentPlayer !== playerAtStart) return;
-        if (!force && (!latest.isAiPlaying || latest.aiColor !== playerAtStart)) return;
-        if (latest.currentNode.analysis?.moves?.length) break;
-        await sleep(25);
-      }
-      const latest = get();
-      if (getAiRequestEpoch() !== epoch || latest.currentNode.id !== nodeId || latest.currentPlayer !== playerAtStart) return;
-      if (!force && (!latest.isAiPlaying || latest.aiColor !== playerAtStart)) return;
-      const best = latest.currentNode.analysis?.moves?.[0];
-      if (!best) return;
-      set({ isAiThinking: false });
-      if (best.x < 0 || best.y < 0) latest.passTurn();
-      else latest.playMove(best.x, best.y);
-    })().catch(() => {
-      if (getAiRequestEpoch() === epoch) set({ isAiThinking: false });
-    });
-  },
+  makeAiMove: (opts) => runAiMove(get, set, opts),
 
   undoMove: () => {
     // A take-back invalidates any in-flight engine result. Otherwise the old
