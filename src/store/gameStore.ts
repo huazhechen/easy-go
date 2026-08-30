@@ -3915,6 +3915,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!node.parent) {
       return { notification: { message: 'Play or navigate to a move before pinning a line.', type: 'info' } };
     }
+    /* removed pinned variation implementation */
+    /*
     const path = getNodePath(node);
     const moveNumber = getCurrentLineMoveNumber(node);
     const coord = node.move && node.move.x >= 0 && node.move.y >= 0
