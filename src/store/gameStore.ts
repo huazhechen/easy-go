@@ -15,17 +15,15 @@ import { playStoneSound, playCaptureSound, playPassSound, playNewGameSound } fro
 import { formatSgfDate } from '../utils/sgf';
 import { getKataGoEngineClient } from '../engine/katago/client';
 import type { KataGoAnalysisPayload } from '../engine/katago/types';
-import { ENGINE_MAX_TIME_MS, ENGINE_MAX_VISITS } from '../engine/katago/limits';
+import { ENGINE_MAX_TIME_MS } from '../engine/katago/limits';
 import { createEmptyBoard, getMaxHandicap, normalizeBoardSize } from '../utils/boardSize';
 import {
   ANALYSIS_QUEUE_PRIORITY,
+  buildAnalysisResult,
   beginContinuousAnalysis,
   CONTINUOUS_INNER_MAX_TIME_MS,
   CONTINUOUS_MAX_VISITS,
   CONTINUOUS_POSITION_MAX_TIME_MS,
-  CONTINUOUS_REPORT_DURING_SEARCH_MS,
-  PROGRESS_APPLY_MIN_MS,
-  REPORT_DURING_SEARCH_EVERY_MS,
   analysisCacheKey,
   continuousSearchMsByNodeId,
   getAiRequestEpoch,
@@ -34,7 +32,9 @@ import {
   isAnalysisCanceled,
   isContinuousAnalysisCurrent,
   nextContinuousAnalysisVisits,
+  resolveAnalysisRequest,
   sleep,
+  type AnalysisRequestOptions,
 } from './analysis';
 import {
   applyHandicapStones,
@@ -88,23 +88,7 @@ interface GameStore extends GameState {
   navigateBack: () => void;
   jumpToNode: (node: GameNode) => void; // Navigate to arbitrary node
   passTurn: () => void;
-  runAnalysis: (opts?: {
-    force?: boolean;
-    visits?: number;
-    maxTimeMs?: number;
-    batchSize?: number;
-    maxChildren?: number;
-    topK?: number;
-    analysisPvLen?: number;
-    wideRootNoise?: number;
-    nnRandomize?: boolean;
-    conservativePass?: boolean;
-    reuseTree?: boolean;
-    ownershipRefreshIntervalMs?: number;
-    reportEveryMs?: number;
-    /** Let an outer scheduler handle failures instead of resolving after reporting them. */
-    propagateErrors?: boolean;
-  }) => Promise<void>;
+  runAnalysis: (opts?: AnalysisRequestOptions) => Promise<void>;
   updateSettings: (newSettings: Partial<GameSettings>) => void;
   startNewGame: (opts: { komi: number; rules: GameRules; boardSize: BoardSize; handicap: number }) => void;
 }
@@ -235,7 +219,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   runAnalysis: async (opts) => {
     const state = get();
-    const desiredVisits = Math.max(16, Math.min(opts?.visits ?? state.settings.katagoVisits, ENGINE_MAX_VISITS));
+    const boardSize = getBoardSizeFromBoard(state.board);
+    const request = resolveAnalysisRequest(state.settings, boardSize, opts, state.isContinuousAnalysis);
     if (!opts?.force && state.currentNode.analysis) {
       const existing = state.currentNode.analysis;
       const existingOwnershipMode = existing.ownershipMode ?? 'root';
@@ -246,7 +231,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           : requiredOwnershipMode === 'root'
             ? existingOwnershipMode === 'root' || existingOwnershipMode === 'tree'
             : true;
-      if (nodeAnalysisVisitCount(state.currentNode) >= desiredVisits && ownershipOk) {
+      if (nodeAnalysisVisitCount(state.currentNode) >= request.visits && ownershipOk) {
         set({ analysisData: existing });
         return;
       }
@@ -257,55 +242,27 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const grandparentBoard = node.parent?.parent?.gameState.board;
     const modelUrl = resolveModelUrlForFetch(state.settings.katagoModelUrl);
     const rules = state.settings.gameRules;
-    const analysisPvLen = opts?.analysisPvLen ?? state.settings.katagoAnalysisPvLen;
-    const wideRootNoise = opts?.wideRootNoise ?? state.settings.katagoWideRootNoise;
-    const rootPolicyTemperature = state.settings.katagoRootPolicyTemperature;
-    const fillDameBeforePass = state.settings.katagoFillDameBeforePass;
-    const nnRandomize = opts?.nnRandomize ?? state.settings.katagoNnRandomize;
-    const conservativePass = opts?.conservativePass ?? state.settings.katagoConservativePass;
-    const visits = Math.max(16, Math.min(opts?.visits ?? state.settings.katagoVisits, ENGINE_MAX_VISITS));
-    const maxTimeMs = Math.max(25, Math.min(opts?.maxTimeMs ?? state.settings.katagoMaxTimeMs, ENGINE_MAX_TIME_MS));
-    const batchSize = Math.max(1, Math.min(opts?.batchSize ?? state.settings.katagoBatchSize, 64));
-    const boardSize = getBoardSizeFromBoard(state.board);
-    const maxChildren = Math.max(4, Math.min(opts?.maxChildren ?? state.settings.katagoMaxChildren, boardSize * boardSize));
-    const topK = Math.max(1, Math.min(opts?.topK ?? state.settings.katagoTopK, 50));
-    const reuseTree = opts?.reuseTree ?? state.settings.katagoReuseTree;
-    const ownershipRefreshIntervalMs = opts?.ownershipRefreshIntervalMs;
-    const reportEveryMsRaw = opts?.reportEveryMs;
-    const reportEveryMs =
-      typeof reportEveryMsRaw === 'number' && Number.isFinite(reportEveryMsRaw)
-        ? Math.max(0, reportEveryMsRaw)
-        : (state.isContinuousAnalysis ? CONTINUOUS_REPORT_DURING_SEARCH_MS : REPORT_DURING_SEARCH_EVERY_MS);
-    const reportDuringSearchEveryMs = reportEveryMs > 0 ? reportEveryMs : undefined;
-    const progressApplyMinMs = reportEveryMs > 0 ? Math.max(reportEveryMs, PROGRESS_APPLY_MIN_MS) : 0;
-    const treeUpdateEveryMs = reportEveryMs > 0 ? reportEveryMs : 0;
+    const {
+      visits,
+      maxTimeMs,
+      batchSize,
+      maxChildren,
+      topK,
+      analysisPvLen,
+      wideRootNoise,
+      rootPolicyTemperature,
+      fillDameBeforePass,
+      nnRandomize,
+      conservativePass,
+      reuseTree,
+      ownershipRefreshIntervalMs,
+      reportDuringSearchEveryMs,
+      progressApplyMinMs,
+      treeUpdateEveryMs,
+    } = request;
     let lastProgressVisits = -1;
     let lastTreeUpdateAt = 0;
     let lastTerritoryUpdateAt = 0;
-
-    const buildAnalysisResult = (
-      analysis: KataGoAnalysisPayload,
-      territory: number[][]
-    ): AnalysisResult => ({
-      rootWinRate: analysis.rootWinRate,
-      rootScoreLead: analysis.rootScoreLead,
-      rootScoreSelfplay: analysis.rootScoreSelfplay,
-      rootScoreStdev: analysis.rootScoreStdev,
-      rootVisits: analysis.rootVisits,
-      rawWinRate: analysis.rawWinRate,
-      rawScoreLead: analysis.rawScoreLead,
-      rawScoreSelfplay: analysis.rawScoreSelfplay,
-      rawScoreSelfplayStdev: analysis.rawScoreSelfplayStdev,
-      rawNoResultProb: analysis.rawNoResultProb,
-      rawStWrError: analysis.rawStWrError,
-      rawStScoreError: analysis.rawStScoreError,
-      rawVarTimeLeft: analysis.rawVarTimeLeft,
-      moves: analysis.moves,
-      territory,
-      policy: analysis.policy,
-      ownershipStdev: analysis.ownershipStdev,
-      ownershipMode: state.settings.katagoOwnershipMode,
-    });
 
     const applyAnalysis = (analysis: KataGoAnalysisPayload, isFinal: boolean, now = getAnimationNow()) => {
       const shouldUpdateTerritory =
@@ -314,7 +271,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const fallbackTerritory = node.analysis?.territory ?? createEmptyTerritory(boardSize);
       const analysisWithTerritory = buildAnalysisResult(
         analysis,
-        shouldUpdateTerritory ? ownershipToTerritoryGrid(analysis.ownership, boardSize) : fallbackTerritory
+        shouldUpdateTerritory ? ownershipToTerritoryGrid(analysis.ownership, boardSize) : fallbackTerritory,
+        state.settings.katagoOwnershipMode
       );
       node.analysis = analysisWithTerritory;
       if (isFinal) node.analysisVisitsRequested = Math.max(node.analysisVisitsRequested ?? 0, visits);
