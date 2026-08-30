@@ -30,7 +30,7 @@ import {
   nodeToState,
   syncRootSetupPropertiesFromBoard,
 } from './gameTree';
-import { runAiMove, scheduleAiMove } from './aiPlayer';
+import { runAiMove, scheduleAiMove, setAiPlayerState, toggleAiPlayer } from './aiPlayer';
 import { toggleAnalysisMode, toggleContinuousAnalysis, runEngineAnalysis, runEngineQuickEval } from './analysisActions';
 import { initialSettings, rulesToSgfRu, saveStoredSettings } from './settings';
 import { analysisQueue } from '../utils/analysisQueue';
@@ -108,21 +108,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   engineBackend: null,
   isAiThinking: false,
 
-  toggleAi: (color) => {
-    const s = get();
-    const nextOn = !(s.isAiPlaying && s.aiColor === color);
-    if (!nextOn) analysisQueue.cancelGroup('move-search');
-    set({ isAiPlaying: nextOn, aiColor: nextOn ? color : null });
-    const after = get();
-    if (after.isAiPlaying && after.aiColor === after.currentPlayer) {
-      setTimeout(() => after.makeAiMove(), 0);
-    }
-  },
+  toggleAi: (color) => toggleAiPlayer(get, set, color),
 
-  setAiPlayer: (color, enabled = false) => {
-    if (!enabled) analysisQueue.cancelGroup('move-search');
-    set({ aiColor: color, isAiPlaying: enabled });
-  },
+  setAiPlayer: (color, enabled = false) => setAiPlayerState(set, color, enabled),
 
   toggleAnalysisMode: () => toggleAnalysisMode(set),
 

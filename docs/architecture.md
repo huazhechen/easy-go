@@ -63,8 +63,9 @@ sibling modules:
   and AI-request epoch invalidation.
 - `src/store/analysisActions.ts` — analysis-mode toggles, the continuous-search
   loop, MCTS analysis requests, and network-only quick evaluation.
-- `src/store/aiPlayer.ts` — AI turn orchestration: thinking delay, waiting for
-  candidate moves, playing the top move or passing, and scheduling.
+- `src/store/aiPlayer.ts` — AI player wiring and turn orchestration: enabling
+  the AI, thinking delay, waiting for candidate moves, playing the top move or
+  passing, and scheduling.
 
 ## Engine Boundary
 

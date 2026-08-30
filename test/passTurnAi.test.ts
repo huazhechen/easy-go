@@ -52,6 +52,25 @@ describe('GameStore passTurn AI behavior', () => {
     useGameStore.setState({ makeAiMove: originalMakeAiMove });
   });
 
+  it('starts the AI immediately when enabled on its turn', () => {
+    vi.useFakeTimers();
+
+    const store = useGameStore.getState();
+    store.startNewGame({ komi: 6.5, rules: 'japanese', boardSize: 19, handicap: 0 });
+
+    const originalMakeAiMove = store.makeAiMove;
+    const makeAiMoveSpy = vi.fn();
+    useGameStore.setState({ makeAiMove: makeAiMoveSpy as unknown as typeof originalMakeAiMove });
+
+    // Black to move; enabling black as the AI must schedule an immediate move.
+    useGameStore.getState().toggleAi('black');
+    expect(makeAiMoveSpy).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(makeAiMoveSpy).toHaveBeenCalledTimes(1);
+
+    useGameStore.setState({ makeAiMove: originalMakeAiMove });
+  });
+
   it('does not schedule an AI move after the second consecutive pass', () => {
     vi.useFakeTimers();
 

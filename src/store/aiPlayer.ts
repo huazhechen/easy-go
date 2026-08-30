@@ -1,5 +1,6 @@
 import type { GameNode, GameSettings, Player } from '../types';
 import { ENGINE_MAX_TIME_MS } from '../engine/katago/limits';
+import { analysisQueue } from '../utils/analysisQueue';
 import { getAiRequestEpoch, sleep } from './analysis';
 
 /** The slice of the game store the AI player reads and drives. */
@@ -16,6 +17,30 @@ export interface AiPlayerStore {
   passTurn: () => void;
   playMove: (x: number, y: number) => void;
   toggleContinuousAnalysis: () => void;
+}
+
+export function toggleAiPlayer(
+  getStore: () => AiPlayerStore,
+  setStore: (patch: Partial<AiPlayerStore>) => void,
+  color: Player
+): void {
+  const state = getStore();
+  const nextOn = !(state.isAiPlaying && state.aiColor === color);
+  if (!nextOn) analysisQueue.cancelGroup('move-search');
+  setStore({ isAiPlaying: nextOn, aiColor: nextOn ? color : null });
+  const after = getStore();
+  if (after.isAiPlaying && after.aiColor === after.currentPlayer) {
+    setTimeout(() => after.makeAiMove(), 0);
+  }
+}
+
+export function setAiPlayerState(
+  setStore: (patch: Partial<AiPlayerStore>) => void,
+  color: Player | null,
+  enabled = false
+): void {
+  if (!enabled) analysisQueue.cancelGroup('move-search');
+  setStore({ aiColor: color, isAiPlaying: enabled });
 }
 
 /**
