@@ -9,11 +9,9 @@ import type { KataGoAnalysisPayload } from '../engine/katago/types';
 import { ENGINE_MAX_TIME_MS, ENGINE_MAX_VISITS } from '../engine/katago/limits';
 import {
   defaultModelUrl,
-  KATAGO_HUMAN_MODEL_URL,
   KATAGO_RECOMMENDED_MODEL_URL,
   KATAGO_SMALL_MODEL_PATH,
 } from '../engine/katago/modelDefaults';
-import { KATAGO_HUMAN_PROFILE_DEFAULT } from '../engine/katago/searchParams';
 import { decodeKaTrainKt, kaTrainAnalysisToAnalysisResult } from '../utils/katrainSgfAnalysis';
 import { decodeKayaKa } from '../utils/kayaSgfAnalysis';
 import { publicUrl } from '../utils/publicUrl';
@@ -1033,9 +1031,6 @@ const defaultSettings: GameSettings = {
   katagoAnalysisPvLen: 15,
   katagoNnRandomize: true,
   katagoConservativePass: true,
-  humanSlEnabled: false,
-  humanSlModelUrl: KATAGO_HUMAN_MODEL_URL,
-  humanSlProfile: KATAGO_HUMAN_PROFILE_DEFAULT,
   analysisPolicySource: 'engine',
   teachNumUndoPrompts: [1, 1, 1, 0.5, 0, 0],
 };
@@ -2408,8 +2403,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
                 s.settings.katagoWideRootNoise,
                 s.settings.katagoNnRandomize,
                 s.settings.katagoConservativePass,
-                s.settings.humanSlEnabled ? s.settings.humanSlProfile : '',
-                s.settings.humanSlEnabled ? s.settings.humanSlModelUrl : ''
               ),
               run: () => getKataGoEngineClient().analyze({
               positionId: node.id,
@@ -2433,8 +2426,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
               fillDameBeforePass: s.settings.katagoFillDameBeforePass,
               nnRandomize: s.settings.katagoNnRandomize,
               conservativePass: s.settings.katagoConservativePass,
-              humanModelUrl: s.settings.humanSlEnabled ? s.settings.humanSlModelUrl : undefined,
-              humanSlProfile: s.settings.humanSlEnabled ? s.settings.humanSlProfile : undefined,
               visits,
               maxTimeMs,
               batchSize,
@@ -2705,8 +2696,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
         maxChildren,
         reuseTree,
         ownershipRefreshIntervalMs,
-        state.settings.humanSlEnabled ? state.settings.humanSlProfile : '',
-        state.settings.humanSlEnabled ? state.settings.humanSlModelUrl : '',
         avoidMoves ? avoidMoves.map((m) => `${m.x},${m.y}`).sort().join(' ') : ''
       );
       // "Loading" is about the model, not about a request being in flight.
@@ -2752,8 +2741,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
             fillDameBeforePass,
             nnRandomize,
             conservativePass,
-            humanModelUrl: state.settings.humanSlEnabled ? state.settings.humanSlModelUrl : undefined,
-            humanSlProfile: state.settings.humanSlEnabled ? state.settings.humanSlProfile : undefined,
             avoidMoves: avoidMoves?.map((m) => ({ x: m.x, y: m.y, player: state.currentPlayer })),
           visits,
           maxTimeMs,

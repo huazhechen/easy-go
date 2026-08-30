@@ -202,9 +202,6 @@ export interface GameSettings {
   katagoConservativePass: boolean; // KataGo conservativePass (KaTrain default: true)
   katagoFillDameBeforePass: boolean; // KataGo fillDameBeforePass, territory scoring only
   // KataGo human SL net: predicts how a human of a given rank would play.
-  humanSlEnabled: boolean;
-  humanSlModelUrl: string;
-  humanSlProfile: string; // KataGo humanSLProfile, e.g. rank_5k / preaz_1d / proyear_1950
   analysisPolicySource: 'engine' | 'human'; // which policy the R overlay draws
   teachNumUndoPrompts: number[]; // KaTrain trainer/num_undo_prompts
 }
