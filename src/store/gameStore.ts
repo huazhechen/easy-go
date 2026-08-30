@@ -164,7 +164,6 @@ interface GameStore extends GameState {
     /** Moves the search may not play at the root (KataGo avoidMoves). */
     avoidMoves?: Array<{ x: number; y: number }>;
   }) => Promise<void>;
-  analyzeExtra: (mode: 'extra' | 'equalize' | 'sweep' | 'alternative' | 'without-top' | 'stop') => void;
   resetCurrentAnalysis: () => void;
   startSelectRegionOfInterest: () => void;
   cancelSelectRegionOfInterest: () => void;
@@ -1344,6 +1343,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (get().isAnalysisMode) setTimeout(() => void get().runAnalysis({ force: true }), 0);
   },
 
+  /* obsolete extra-analysis modes removed
   analyzeExtra: (mode) => {
     const s = get();
     if (mode === 'stop') {
@@ -1433,7 +1433,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         maxTimeMs: longTimeMs,
       });
     }
-  },
+  }, */
 
   toggleInsertMode: () => {
     const s = get();
