@@ -31,11 +31,9 @@ import {
   findSiblingBranchTarget,
   getActiveChild,
   getCurrentLineNodes,
-  getCurrentLineMoveNumber,
   rememberActiveBranchPath,
   type ActiveBranchMap,
 } from '../utils/branchNavigation';
-import { ensurePinGameId, getNodePath, getPinGameId, resolveNodePath, restorePinnedVariations, writeStoredPinnedVariations, type PinnedVariation } from '../utils/pinnedVariations';
 import { komiWithHandicapBonus } from '../utils/handicap';
 import { getResignResult } from '../utils/resign';
 import {
@@ -143,11 +141,6 @@ interface GameStore extends GameState {
   copyCurrentBranch: () => void;
   pasteCopiedBranch: () => void;
   jumpToNode: (node: GameNode) => void; // Navigate to arbitrary node
-  pinnedVariations: PinnedVariation[];
-  pinCurrentVariation: () => void;
-  recallVariation: (id: string) => void;
-  unpinVariation: (id: string) => void;
-  clearPinnedVariations: () => void;
   navigateNextMistake: () => void;
   navigatePrevMistake: () => void;
   resetGame: () => void;
@@ -1138,7 +1131,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   currentNode: initialRoot,
   treeVersion: 0,
   activeBranchChildIds: {},
-  pinnedVariations: [],
 
   boardRotation: 0,
   regionOfInterest: null,
@@ -3917,7 +3909,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
   },
 
-  pinCurrentVariation: () => set((state) => {
+  /* pinning removed */
+  /*
     const node = state.currentNode;
     if (!node.parent) {
       return { notification: { message: 'Play or navigate to a move before pinning a line.', type: 'info' } };
@@ -3974,6 +3967,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     return { pinnedVariations: [] };
   }),
 
+  */
   navigateNextMistake: () => {
       get().findMistake('redo');
   },
@@ -4054,7 +4048,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       rootNode: newRoot,
       currentNode: newRoot,
       activeBranchChildIds: {},
-      pinnedVariations: [],
       treeVersion: state.treeVersion + 1,
     });
   },
@@ -4110,7 +4103,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       rootNode: newRoot,
       currentNode: newRoot,
       activeBranchChildIds: {},
-      pinnedVariations: [],
       treeVersion: state.treeVersion + 1,
     });
   },
@@ -4388,7 +4380,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set((state) => ({
       rootNode: newRoot,
       currentNode: current,
-      pinnedVariations: restorePinnedVariations(newRoot),
       activeBranchChildIds: rememberActiveBranchPath({}, current),
       board: current.gameState.board,
       currentPlayer: current.gameState.currentPlayer,
