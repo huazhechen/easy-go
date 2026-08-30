@@ -116,6 +116,13 @@ const latestAnalyzeByGroup = new Map<string, number>();
 let interactiveToken = 0;
 const analyzeMeta = new WeakMap<KataGoAnalyzeRequest, { analysisGroup: 'interactive' | 'background'; interactiveToken: number }>();
 
+// TensorFlow promises resume as microtasks. An extended search that only awaits
+// those promises can starve worker message events, preventing a newer position
+// from updating the cancellation token until the old search reaches its full
+// time limit.
+const yieldToWorkerMessages = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, 0));
+
 function ensureBoardSizeForWorker(boardSize: number): void {
   if (boardSize === scratchBoardSize) return;
   setBoardSize(boardSize);
@@ -1009,6 +1016,9 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
       if (remaining <= 0) break;
       const sliceMs = Math.min(reportEveryMs, remaining);
       const aborted = await search!.run({ visits: maxVisits, maxTimeMs: sliceMs, batchSize, shouldAbort });
+      // Give onmessage a task boundary so a newly queued position can mark this
+      // search stale before it starts another reporting slice.
+      await yieldToWorkerMessages();
       if (aborted || shouldAbort()) {
         postCanceled();
         if (msg.reuseTree !== true) {

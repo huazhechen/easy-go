@@ -210,6 +210,12 @@ export class AnalysisQueue {
 
     this.active.add(job);
     const isStale = () => this.isStale(job);
+    // Cancellation is part of the queue's public contract, so notify the
+    // caller immediately. The underlying work may need a newer request before
+    // it can observe its abort signal and unwind (notably the KataGo worker).
+    const removeAbortListener = job.signal.addAbortListener(() => {
+      job.reject(new AnalysisQueueCanceledError(job.signal.reason || undefined));
+    });
 
     void job
       .run({ jobId: job.id, signal: job.signal, isStale })
@@ -231,6 +237,7 @@ export class AnalysisQueue {
         job.reject(err);
       })
       .finally(() => {
+        removeAbortListener();
         this.active.delete(job);
         this.pump();
       });

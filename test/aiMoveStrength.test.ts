@@ -5,6 +5,7 @@ const analyzeMock = vi.fn();
 
 vi.mock('../src/engine/katago/client', () => ({
   getKataGoEngineClient: () => ({
+    init: vi.fn().mockResolvedValue(undefined),
     analyze: analyzeMock,
     getEngineInfo: () => ({ backend: 'test', modelName: 'test-model' }),
   }),
@@ -25,17 +26,17 @@ const passMove: CandidateMove = {
 describe('AI move strength settings', () => {
   beforeEach(() => {
     analyzeMock.mockReset();
-    analyzeMock.mockResolvedValue({
+    analyzeMock.mockImplementation(async (args: { visits?: number }) => ({
       rootWinRate: 0.5,
       rootScoreLead: 0,
       rootScoreSelfplay: 0,
       rootScoreStdev: 0,
-      rootVisits: 16,
+      rootVisits: args.visits ?? 16,
       moves: [passMove],
       ownership: new Float32Array(19 * 19),
       ownershipStdev: new Float32Array(19 * 19),
       policy: new Float32Array(19 * 19 + 1),
-    });
+    }));
   });
 
   it('disables root noise and NN randomization for actual AI moves', async () => {
@@ -50,15 +51,26 @@ describe('AI move strength settings', () => {
         ...state.settings,
         katagoWideRootNoise: 0.5,
         katagoNnRandomize: true,
+        katagoMaxTimeMs: 25,
       },
     }));
 
     useGameStore.getState().makeAiMove();
 
-    expect(analyzeMock).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(analyzeMock).toHaveBeenCalled());
     expect(analyzeMock.mock.calls[0]?.[0]).toMatchObject({
       wideRootNoise: 0,
       nnRandomize: false,
+      visits: 32,
+      maxTimeMs: 1000,
     });
+    await vi.waitFor(() => expect(useGameStore.getState().currentNode.move).toEqual({
+      x: -1,
+      y: -1,
+      player: 'black',
+    }));
+
+    useGameStore.getState().stopAnalysis();
+    useGameStore.getState().resetGame();
   });
 });

@@ -96,6 +96,28 @@ describe('AnalysisQueue', () => {
     expect(events).toEqual(['low-start', 'high-start']);
   });
 
+  it('rejects an active job as soon as it is canceled', async () => {
+    const queue = new AnalysisQueue();
+    const gate = deferred<string>();
+
+    const active = queue.enqueue({
+      id: 'old-position',
+      group: 'interactive',
+      priority: 100,
+      run: async () => gate.promise,
+    });
+    await flush();
+
+    queue.cancelGroup('interactive', 'Position changed');
+    await expect(active).rejects.toSatisfy(isAnalysisQueueCanceledError);
+
+    // Let the underlying operation clean up after the consumer has already
+    // been released from waiting for it.
+    gate.resolve('old');
+    await flush();
+    expect(queue.getSnapshot().active).toEqual([]);
+  });
+
   it('rejects stale results when a newer job claims the same stale key', async () => {
     const queue = new AnalysisQueue();
     const gate = deferred<string>();

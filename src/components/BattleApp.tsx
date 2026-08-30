@@ -1,5 +1,17 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { FaCalculator, FaFlag, FaLightbulb, FaRedo, FaUndo } from 'react-icons/fa';
+
+function LogoMark({ className = '' }: { className?: string }) {
+  return (
+    <svg className={`logo-mark ${className}`} viewBox="0 0 48 48" aria-label="Easy Go logo" role="img">
+      <rect width="48" height="48" rx="9" fill="#e9bd7f" />
+      <circle cx="15" cy="15" r="11" fill="#111715" />
+      <circle cx="33" cy="15" r="11" fill="#f8fafc" />
+      <circle cx="33" cy="33" r="11" fill="#111715" />
+      <circle cx="15" cy="33" r="11" fill="#f8fafc" />
+    </svg>
+  );
+}
 import { useGameStore } from '../store/gameStore';
 import type { BoardSize, CandidateMove, GameSettings } from '../types';
 import { getHoshiPoints } from '../utils/boardSize';
@@ -179,7 +191,6 @@ export function BattleApp() {
   const downloadAbortRef = useRef<AbortController | null>(null);
   const b18BlobUrlRef = useRef<string | null>(null);
   const didInitialize = useRef(false);
-  const recommendationRequested = useRef(false);
   const boardSize = board.length;
   const topMoves = useMemo(() => (analysisData?.moves ?? []).slice(0, 3), [analysisData]);
   const recommendationIterations = analysisData?.rootVisits ?? currentNode.analysisVisitsRequested ?? 0;
@@ -209,13 +220,16 @@ export function BattleApp() {
     if (didInitialize.current) return;
     didInitialize.current = true;
     updateSettings({ katagoMaxTimeMs: thinkingMs, katagoBatchSize: 1 });
-    if (board.length !== 9) {
-      startNewGame({ komi: 6.5, rules: 'japanese', boardSize: 9, handicap: 0 });
-      window.setTimeout(() => {
-        const state = useGameStore.getState();
-        if (!selfPlayMode && !state.isAiPlaying) state.toggleAi(humanColor === 'black' ? 'white' : 'black');
-      }, 0);
-    }
+    // Always pass through the default new-game path on a fresh page load.
+    // The initial store already has a 9x9 board, so checking only the board
+    // size skipped this lifecycle and left the first analysis waiting for a
+    // later move to change the position.
+    startNewGame({ komi: 6.5, rules: 'japanese', boardSize: 9, handicap: 0 });
+    window.setTimeout(() => {
+      const state = useGameStore.getState();
+      if (!selfPlayMode && !state.isAiPlaying) state.toggleAi(humanColor === 'black' ? 'white' : 'black');
+      if (!state.isContinuousAnalysis) state.toggleContinuousAnalysis(true);
+    }, 0);
   }, [board.length, humanColor, selfPlayMode, startNewGame, thinkingMs, updateSettings]);
 
   useEffect(() => {
@@ -228,7 +242,6 @@ export function BattleApp() {
     setShowHints(false);
     setHintLoading(false);
     setScanlineDone(false);
-    recommendationRequested.current = false;
     setScoreNotice(null);
     setScoreCache(null);
     setShowTerritory(false);
@@ -239,18 +252,6 @@ export function BattleApp() {
     if (!isAiThinking || !hintLoading) return;
     setHintLoading(false);
   }, [hintLoading, isAiThinking]);
-
-  useEffect(() => {
-    const latest = useGameStore.getState();
-    if (recommendationRequested.current || latest.isAiThinking || (!latest.isSelfplayToEnd && latest.currentPlayer === latest.aiColor) || latest.currentNode.analysis?.moves?.length) return;
-    if (!latest.isAnalysisMode) {
-      latest.toggleAnalysisMode();
-      return;
-    }
-    recommendationRequested.current = true;
-    void latest.runAnalysis({ force: true, visits: 5000, maxTimeMs: 60_000, topK: 3, analysisPvLen: 4 })
-      .finally(() => setHintLoading(false));
-  }, [aiColor, analysisData?.moves?.length, currentNode.id, currentPlayer, isAiThinking, runAnalysis]);
 
   useEffect(() => {
     if (hintLoading && analysisData?.moves?.length) setHintLoading(false);
@@ -330,11 +331,7 @@ export function BattleApp() {
     setShowHints(nextVisible);
     if (nextVisible && !(analysisData?.moves?.length) && !isAiThinking && !hintLoading) {
       setHintLoading(true);
-      // Recommendation analysis deliberately uses a huge fixed budget
-      // (5000 visits / 60s) so hints keep improving regardless of tier or the
-      // opponent's per-move thinking time.
-      void runAnalysis({ force: true, visits: 5000, maxTimeMs: 60_000, topK: 3, analysisPvLen: 4 })
-        .finally(() => setHintLoading(false));
+      if (!isAnalysisMode) toggleAnalysisMode();
     }
   };
 
@@ -562,7 +559,7 @@ export function BattleApp() {
     <main className="battle-shell">
       <header className="battle-header">
         <div>
-          <h1>EASY GO</h1>
+          <h1><LogoMark />EASY GO</h1>
         </div>
         <div className="header-tools"><button type="button" className="new-game-header" onClick={() => { setDraftSize(size); setDraftHumanColor(humanColor); setDraftSelfPlayMode(selfPlayMode); setShowNewGame(true); }}><FaRedo />新对局</button></div>
       </header>
@@ -601,7 +598,7 @@ export function BattleApp() {
               // Keep the scanline slightly ahead of the engine timeout so the
               // animation reaches its end after the result is handed back.
               style={{ animationDuration: `${Math.max(25, settings.katagoMaxTimeMs) * 1.1}ms` }}
-            ><span className="ai-thinking-visits">{formatIterations(analysisData?.rootVisits ?? currentNode.analysisVisitsRequested ?? settings.katagoVisits)}</span></span>
+            ></span>
           )}
           <div className="board-coordinates board-coordinates-top" aria-hidden="true">
             {Array.from({ length: boardSize }, (_, index) => (

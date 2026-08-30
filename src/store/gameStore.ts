@@ -1,7 +1,7 @@
 import { createWithEqualityFn as create } from 'zustand/traditional';
 import { DEFAULT_BOARD_SIZE, type GameRules, type GameState, type BoardState, type Player, type AnalysisResult, type BoardDrawing, type GameNode, type Move, type GameSettings, type CandidateMove, type RegionOfInterest, type BoardSize, type KataGoBackendPreference, type EditTool } from '../types';
 import { findMistakeNavigationTarget } from '../utils/mistakeNavigation';
-import { applyCapturesInPlace, boardsEqual, getLiberties, getLegalMoves, isEye, isValidMove } from '../utils/gameLogic';
+import { applyCapturesInPlace, boardsEqual, getLiberties, isValidMove } from '../utils/gameLogic';
 import { playStoneSound, playCaptureSound, playPassSound, playNewGameSound } from '../utils/sound';
 import { coordinateToSgf, expandSgfPointList, extractKaTrainUserNoteFromSgfComment, formatSgfDate, type ParsedSgf } from '../utils/sgf';
 import { getKataGoEngineClient, isKataGoCanceledError } from '../engine/katago/client';
@@ -28,7 +28,6 @@ import {
   findCurrentLineMoveTarget,
   findSiblingBranchTarget,
   getActiveChild,
-  getCurrentLineNodes,
   rememberActiveBranchPath,
   type ActiveBranchMap,
 } from '../utils/branchNavigation';
@@ -76,11 +75,6 @@ interface GameStore extends GameState {
   copiedBranch: BranchClipboardNode | null;
   editUndoCount: number;
   editRedoCount: number;
-  isSelfplayToEnd: boolean;
-  isGameAnalysisRunning: boolean;
-  gameAnalysisType: 'quick' | 'fast' | 'full' | null;
-  gameAnalysisDone: number;
-  gameAnalysisTotal: number;
   isAiPlaying: boolean;
   aiColor: Player | null;
   isAnalysisMode: boolean;
@@ -159,6 +153,8 @@ interface GameStore extends GameState {
     reuseTree?: boolean;
     ownershipRefreshIntervalMs?: number;
     reportEveryMs?: number;
+    /** Let an outer scheduler handle failures instead of resolving after reporting them. */
+    propagateErrors?: boolean;
     /** Moves the search may not play at the root (KataGo avoidMoves). */
     avoidMoves?: Array<{ x: number; y: number }>;
   }) => Promise<void>;
@@ -177,12 +173,6 @@ interface GameStore extends GameState {
   addSegmentMarkup: (prop: SegmentProperty, sx: number, sy: number, ex: number, ey: number) => void;
   addNodeDrawing: (drawing: BoardDrawing) => void;
   clearNodeDrawings: () => void;
-  selfplayToEnd: () => void;
-  stopSelfplayToEnd: () => void;
-  startQuickGameAnalysis: () => void;
-  startFastGameAnalysis: (opts?: { moveRange?: [number, number] | null }) => void;
-  startFullGameAnalysis: (opts: { visits: number; moveRange?: [number, number] | null; mistakesOnly?: boolean }) => void;
-  stopGameAnalysis: () => void;
   updateSettings: (newSettings: Partial<GameSettings>) => void;
   setKomi: (komi: number) => void;
   setHandicap: (handicap: number) => void;
@@ -1011,7 +1001,7 @@ const defaultSettings: GameSettings = {
   katagoModelUrl: defaultModelUrl(),
   katagoBackend: 'webgpu',
   katagoVisits: DEFAULT_KATAGO_VISITS,
-  katagoFastVisits: 25,
+  // Continuous recommendation search starts at 32 visits.
   // Matches the default B10 tier's per-move thinking time (see modelDefaults).
   katagoMaxTimeMs: 2000,
   katagoBatchSize: 16,
@@ -1036,17 +1026,24 @@ const initialSettings: GameSettings = {
 };
 
 let continuousToken = 0;
-let selfplayToken = 0;
-let gameAnalysisToken = 0;
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const CONTINUOUS_INITIAL_VISITS = 32;
+const CONTINUOUS_MAX_VISITS = 16_384;
+const CONTINUOUS_INNER_MAX_TIME_MS = 1_000;
+const CONTINUOUS_POSITION_MAX_TIME_MS = 5 * 60_000;
+const continuousSearchMsByNodeId = new Map<string, number>();
+
+export const nextContinuousAnalysisVisits = (currentVisits: number): number => {
+  if (currentVisits < 1) return CONTINUOUS_INITIAL_VISITS;
+  return Math.min(
+    CONTINUOUS_MAX_VISITS,
+    Math.max(currentVisits + 1, Math.ceil(currentVisits * 1.2 + 32))
+  );
+};
 const ANALYSIS_QUEUE_PRIORITY = {
   interactive: 100,
   // Playing a move must win over background continuous recommendations.
   aiMove: 110,
-  selfplay: 55,
-  fullGame: 20,
-  fastGame: 15,
-  quickGame: 10,
 } as const;
 // KaTrain-style report cadence (seconds -> ms).
 const REPORT_DURING_SEARCH_EVERY_MS = 1000;
@@ -1057,45 +1054,7 @@ const PROGRESS_APPLY_MIN_MS = 500;
 const isAnalysisCanceled = (err: unknown): boolean =>
   isKataGoCanceledError(err) || isAnalysisQueueCanceledError(err) || isAnalysisQueueStaleError(err);
 
-const gameAnalysisTypeLabel = (type: NonNullable<GameStore['gameAnalysisType']>): string => {
-  if (type === 'quick') return 'Quick game analysis';
-  if (type === 'fast') return 'Fast game review';
-  return 'Full game analysis';
-};
-
-const errorMessage = (err: unknown): string => {
-  const message = err instanceof Error ? err.message : String(err);
-  return message.trim() || 'Unknown analysis error';
-};
-
-const gameAnalysisFailureUpdate = (
-  type: NonNullable<GameStore['gameAnalysisType']>,
-  failed: number,
-  total: number,
-  lastError: string | null
-): Partial<Pick<GameStore, 'engineStatus' | 'engineError' | 'notification'>> => {
-  if (failed <= 0) return {};
-  const label = gameAnalysisTypeLabel(type);
-  const totalLabel = `${total} position${total === 1 ? '' : 's'}`;
-  const summary =
-    failed >= total
-      ? `${label} failed for all ${totalLabel}`
-      : `${label} skipped ${failed} of ${totalLabel}`;
-  const detail = lastError ?? 'Unknown analysis error';
-  const message = `${summary}: ${detail}`;
-  return {
-    engineStatus: 'error',
-    engineError: detail,
-    notification: {
-      message,
-      type: 'error',
-      copyText: message,
-    },
-  };
-};
-
 const analysisCacheKey = (...parts: unknown[]): string => JSON.stringify(parts);
-
 // Invalidates asynchronous AI callbacks whenever the visible game position
 // changes. Cancellation alone is not sufficient because an engine may resolve
 // concurrently with the cancel request.
@@ -1131,11 +1090,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   copiedBranch: null,
   editUndoCount: 0,
   editRedoCount: 0,
-  isSelfplayToEnd: false,
-  isGameAnalysisRunning: false,
-  gameAnalysisType: null,
-  gameAnalysisDone: 0,
-  gameAnalysisTotal: 0,
   isAiPlaying: false,
   aiColor: null,
   isAnalysisMode: false,
@@ -1158,7 +1112,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   toggleAi: (color) => {
     const s = get();
     const nextOn = !(s.isAiPlaying && s.aiColor === color);
-    if (!nextOn) analysisQueue.cancelGroup('ai-move');
+    if (!nextOn) analysisQueue.cancelGroup('move-search');
     set({ isAiPlaying: nextOn, aiColor: nextOn ? color : null });
     const after = get();
     if (after.isAiPlaying && after.aiColor === after.currentPlayer) {
@@ -1167,16 +1121,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   setAiPlayer: (color, enabled = false) => {
-    if (!enabled) analysisQueue.cancelGroup('ai-move');
+    if (!enabled) analysisQueue.cancelGroup('move-search');
     set({ aiColor: color, isAiPlaying: enabled });
   },
 
   toggleAnalysisMode: () => set((state) => {
       const newMode = !state.isAnalysisMode;
-      if (newMode) {
-          setTimeout(() => void get().runAnalysis(), 0);
-      } else {
-          analysisQueue.cancelGroup('interactive');
+      if (!newMode) {
+          analysisQueue.cancelGroup('move-search');
       }
       return {
         isAnalysisMode: newMode,
@@ -1223,32 +1175,40 @@ export const useGameStore = create<GameStore>((set, get) => ({
               if (!state.isContinuousAnalysis) return;
               if (!state.isAnalysisMode) return;
 
-              // Continuous recommendation analysis is independent from the
-              // opponent's preset: keep deepening until engine hard limits.
-              const target = ENGINE_MAX_VISITS;
-              const initialVisits = Math.max(16, Math.min(target, state.settings.katagoFastVisits));
               const node = state.currentNode;
-              const normalizedVisits = nodeAnalysisVisitCount(node);
-
-              let nextVisits: number;
-              if (normalizedVisits < 1) {
-                  nextVisits = initialVisits;
-              } else if (normalizedVisits < target) {
-                  const bumped = Math.max(normalizedVisits + 1, normalizedVisits * 2);
-                  nextVisits = Math.min(target, Math.max(initialVisits, bumped));
-              } else {
+              const currentVisits = nodeAnalysisVisitCount(node);
+              const elapsedMs = continuousSearchMsByNodeId.get(node.id) ?? 0;
+              if (currentVisits >= CONTINUOUS_MAX_VISITS || elapsedMs >= CONTINUOUS_POSITION_MAX_TIME_MS) {
                   await sleep(500);
                   continue;
               }
 
-              await get().runAnalysis({
-                force: true,
-                visits: nextVisits,
-                maxTimeMs: ENGINE_MAX_TIME_MS,
-                reuseTree: true,
-                ownershipRefreshIntervalMs: state.settings.katagoOwnershipMode === 'tree' ? 500 : undefined,
-              });
-              await sleep(50);
+              const nextVisits = nextContinuousAnalysisVisits(currentVisits);
+              const startedAt = Date.now();
+              try {
+                await get().runAnalysis({
+                  force: true,
+                  visits: nextVisits,
+                  maxTimeMs: CONTINUOUS_INNER_MAX_TIME_MS,
+                  topK: 3,
+                  analysisPvLen: 4,
+                  wideRootNoise: 0,
+                  nnRandomize: false,
+                  reuseTree: true,
+                  reportEveryMs: 0,
+                  propagateErrors: true,
+                  ownershipRefreshIntervalMs: state.settings.katagoOwnershipMode === 'tree' ? 500 : undefined,
+                });
+              } catch (err) {
+                if (!isAnalysisCanceled(err)) {
+                  const message = err instanceof Error ? err.message : String(err);
+                  set({ engineStatus: 'error', engineError: message });
+                  await sleep(1_000);
+                }
+              } finally {
+                const spentMs = Math.min(CONTINUOUS_INNER_MAX_TIME_MS, Math.max(0, Date.now() - startedAt));
+                continuousSearchMsByNodeId.set(node.id, elapsedMs + spentMs);
+              }
           }
       })();
   },
@@ -1266,8 +1226,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         type: 'info' as const,
       };
       continuousToken++;
-      selfplayToken++;
-      gameAnalysisToken++;
+      continuousSearchMsByNodeId.clear();
       analysisQueue.cancelWhere(() => true, 'Cleared analysis cache');
       analysisQueue.clearCache();
       set((state) => {
@@ -1276,10 +1235,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           analysisData: null,
           analysisCacheSize: 0,
           isContinuousAnalysis: false,
-          isSelfplayToEnd: false,
-          isGameAnalysisRunning: false,
-          gameAnalysisType: null,
-          engineStatus: 'idle',
+                                  engineStatus: 'idle',
           engineError: null,
           treeVersion: state.treeVersion + 1,
           notification,
@@ -1331,98 +1287,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set((state) => ({ analysisData: null, treeVersion: state.treeVersion + 1 }));
     if (get().isAnalysisMode) setTimeout(() => void get().runAnalysis({ force: true }), 0);
   },
-
-  /* obsolete extra-analysis modes removed
-  analyzeExtra: (mode) => {
-    const s = get();
-    if (mode === 'stop') {
-      s.stopAnalysis();
-      s.stopSelfplayToEnd();
-      s.stopGameAnalysis();
-      return;
-    }
-
-    if (!s.isAnalysisMode) set({ isAnalysisMode: true });
-
-    const longTimeMs = Math.min(ENGINE_MAX_TIME_MS, 60_000);
-
-    const toast = (message: string) => {
-      const notification = { message, type: 'info' as const };
-      set({ notification });
-    };
-
-    if (mode === 'extra') {
-      const base = Math.max(16, Math.min(s.settings.katagoVisits, ENGINE_MAX_VISITS));
-      const prev = Math.max(0, Math.min(s.currentNode.analysisVisitsRequested ?? base, ENGINE_MAX_VISITS));
-      const visits = Math.max(16, Math.min(prev + base, ENGINE_MAX_VISITS));
-      toast(`Extra analysis: ${visits} visits`);
-      void s.runAnalysis({ force: true, visits, maxTimeMs: longTimeMs });
-      return;
-    }
-
-    if (mode === 'equalize') {
-      const analysis = s.currentNode.analysis;
-      if (!analysis || analysis.moves.length === 0) {
-        toast('Equalize: wait for analysis first.');
-        return;
-      }
-      const maxMoveVisits = analysis.moves.reduce((acc, cur) => Math.max(acc, cur.visits), 1);
-      const target = Math.max(maxMoveVisits * analysis.moves.length, s.currentNode.analysisVisitsRequested ?? s.settings.katagoVisits);
-      const visits = Math.max(16, Math.min(target, ENGINE_MAX_VISITS));
-      toast(`Equalize: ${visits} visits`);
-      void s.runAnalysis({ force: true, visits, maxTimeMs: longTimeMs });
-      return;
-    }
-
-    if (mode === 'sweep') {
-      const visits = Math.max(16, Math.min(s.settings.katagoFastVisits, ENGINE_MAX_VISITS));
-      const boardSize = getBoardSizeFromBoard(s.board);
-      const maxChildren = boardSize * boardSize;
-      toast(`Sweep: ${visits} visits, maxChildren ${maxChildren}`);
-      void s.runAnalysis({
-        force: true,
-        visits,
-        maxChildren,
-        topK: Math.max(s.settings.katagoTopK, 20),
-        reuseTree: false,
-        maxTimeMs: longTimeMs,
-      });
-      return;
-    }
-
-    if (mode === 'without-top') {
-      const candidates = s.currentNode.analysis?.moves ?? [];
-      const top = candidates.find((m) => m.order === 0) ?? candidates[0] ?? null;
-      if (!top || top.x < 0 || top.y < 0) {
-        set({ notification: { message: 'Analyze the position first, then ask what else there is.', type: 'error' } });
-        return;
-      }
-      const label = `${String.fromCharCode(65 + (top.x >= 8 ? top.x + 1 : top.x))}${s.board.length - top.y}`;
-      const visits = Math.max(16, Math.min(s.settings.katagoVisits, ENGINE_MAX_VISITS));
-      toast(`Analyzing without ${label}: ${visits} visits`);
-      void s.runAnalysis({
-        force: true,
-        visits,
-        reuseTree: false,
-        maxTimeMs: longTimeMs,
-        avoidMoves: [{ x: top.x, y: top.y }],
-      });
-      return;
-    }
-
-    if (mode === 'alternative') {
-      const visits = Math.max(16, Math.min(s.settings.katagoFastVisits, ENGINE_MAX_VISITS));
-      const wideRootNoise = Math.max(s.settings.katagoWideRootNoise, 0.12);
-      toast(`Alternative: ${visits} visits, noise ${wideRootNoise.toFixed(2)}`);
-      void s.runAnalysis({
-        force: true,
-        visits,
-        wideRootNoise,
-        reuseTree: false,
-        maxTimeMs: longTimeMs,
-      });
-    }
-  }, */
 
   toggleInsertMode: () => {
     const s = get();
@@ -1891,630 +1755,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     return changed;
   },
 
-  selfplayToEnd: () => {
-    const token = ++selfplayToken;
-    analysisQueue.cancelGroup('selfplay');
-    set({ isSelfplayToEnd: true });
-
-    void (async () => {
-      let safety = 0;
-      while (true) {
-        const s = get();
-        if (token !== selfplayToken) return;
-        if (!s.isSelfplayToEnd) return;
-
-        const mh = s.moveHistory;
-        const last = mh[mh.length - 1];
-        const prev = mh[mh.length - 2];
-        if (isPassMove(last) && isPassMove(prev)) {
-          set({ isSelfplayToEnd: false });
-          return;
-        }
-        if (safety++ > 2000) {
-          const notification = { message: 'Selfplay stopped (move limit).', type: 'error' as const };
-          set({ isSelfplayToEnd: false, notification });
-          return;
-        }
-
-        try {
-          const node = s.currentNode;
-          const parentBoard = node.parent?.gameState.board;
-          const grandparentBoard = node.parent?.parent?.gameState.board;
-          const modelUrl = resolveModelUrlForFetch(s.settings.katagoModelUrl);
-          const rules = s.settings.gameRules;
-          const visits = Math.max(16, Math.min(s.settings.katagoFastVisits, ENGINE_MAX_VISITS));
-          const maxTimeMs = Math.max(250, Math.min(s.settings.katagoMaxTimeMs, ENGINE_MAX_TIME_MS));
-          const analysis = await analysisQueue.enqueue<KataGoAnalysisPayload>({
-            id: `selfplay:${token}:${node.id}:${safety}`,
-            label: 'Selfplay move',
-            group: 'selfplay',
-            priority: ANALYSIS_QUEUE_PRIORITY.selfplay,
-            cacheKey: analysisCacheKey(
-              'selfplay',
-              node.id,
-              nodeAnalysisPositionKey(node, rules),
-              modelUrl,
-              s.settings.katagoBackend,
-              rules,
-              visits,
-              maxTimeMs,
-              s.settings.katagoBatchSize,
-              s.settings.katagoMaxChildren,
-              s.settings.katagoConservativePass
-            ),
-            run: () => getKataGoEngineClient().analyze({
-            positionId: node.id,
-            parentPositionId: node.parent?.id,
-            positionKey: nodeAnalysisPositionKey(node, rules),
-            parentPositionKey: parentAnalysisPositionKey(node, rules),
-            modelUrl,
-            backend: s.settings.katagoBackend,
-            board: s.board,
-            previousBoard: parentBoard,
-            previousPreviousBoard: grandparentBoard,
-            currentPlayer: s.currentPlayer,
-            moveHistory: s.moveHistory,
-            komi: komiWithHandicapBonus(s.rootNode.gameState.board, rules, s.komi),
-            rules,
-            topK: Math.max(1, Math.min(s.settings.katagoTopK, 10)),
-            analysisPvLen: Math.max(0, Math.min(s.settings.katagoAnalysisPvLen, 30)),
-            includeMovesOwnership: false,
-            wideRootNoise: 0.0,
-            rootPolicyTemperature: 1.0,
-            fillDameBeforePass: s.settings.katagoFillDameBeforePass,
-            nnRandomize: false,
-            conservativePass: s.settings.katagoConservativePass,
-            visits,
-            maxTimeMs,
-            batchSize: s.settings.katagoBatchSize,
-            maxChildren: s.settings.katagoMaxChildren,
-            reuseTree: false,
-            ownershipMode: 'none',
-            analysisGroup: 'background',
-            }),
-          });
-
-          const best = analysis.moves[0] ?? null;
-          if (!best || best.x < 0 || best.y < 0) s.passTurn();
-          else s.playMove(best.x, best.y);
-        } catch (err) {
-          if (isAnalysisCanceled(err)) {
-            await sleep(25);
-            continue;
-          }
-          // Fall back to heuristics if engine fails.
-          makeHeuristicMove(get());
-        }
-
-        await sleep(50);
-      }
-    })();
-  },
-
-  stopSelfplayToEnd: () => {
-    selfplayToken++;
-    analysisQueue.cancelGroup('selfplay');
-    set({ isSelfplayToEnd: false });
-  },
-
-  startQuickGameAnalysis: () => {
-    const token = ++gameAnalysisToken;
-    analysisQueue.cancelGroup('game-analysis');
-    const state = get();
-
-    const nodes = getCurrentLineNodes(state.rootNode, state.activeBranchChildIds);
-
-    const total = nodes.length;
-    if (total <= 1) {
-      set({ isGameAnalysisRunning: false, gameAnalysisType: null, gameAnalysisDone: 0, gameAnalysisTotal: total });
-      return;
-    }
-
-    set({ isGameAnalysisRunning: true, gameAnalysisType: 'quick', gameAnalysisDone: 0, gameAnalysisTotal: total });
-
-    void (async () => {
-      let done = 0;
-      let failed = 0;
-      let lastFailure: string | null = null;
-      let lastUiUpdate = getAnimationNow();
-      let metaSynced = false;
-      const stillOwnsRun = () =>
-        token === gameAnalysisToken && get().isGameAnalysisRunning && get().gameAnalysisType === 'quick';
-
-      const evalBatchSize = Math.max(1, Math.min(get().settings.katagoBatchSize, 8));
-
-      for (let start = 0; start < nodes.length; start += evalBatchSize) {
-        if (token !== gameAnalysisToken) return;
-        if (!get().isGameAnalysisRunning) return;
-        if (get().gameAnalysisType !== 'quick') return;
-
-        const chunk = nodes.slice(start, start + evalBatchSize);
-        const toEval = chunk.filter((n) => !n.analysis);
-        if (toEval.length > 0) {
-          try {
-            const s = get();
-            const modelUrl = resolveModelUrlForFetch(s.settings.katagoModelUrl);
-            const rules = s.settings.gameRules;
-            const conservativePass = s.settings.katagoConservativePass;
-            const evals = await analysisQueue.enqueue({
-              id: `quick-game:${token}:${start}`,
-              label: 'Quick game analysis',
-              group: 'game-analysis',
-              priority: ANALYSIS_QUEUE_PRIORITY.quickGame,
-              cacheKey: analysisCacheKey(
-                'quick-game',
-                modelUrl,
-                s.settings.katagoBackend,
-                rules,
-                conservativePass,
-                toEval.map((n) => nodeAnalysisPositionKey(n, rules))
-              ),
-              run: () => getKataGoEngineClient().evaluateBatch({
-              modelUrl,
-              backend: s.settings.katagoBackend,
-              positions: toEval.map((n) => ({
-                board: n.gameState.board,
-                previousBoard: n.parent?.gameState.board,
-                previousPreviousBoard: n.parent?.parent?.gameState.board,
-                currentPlayer: n.gameState.currentPlayer,
-                moveHistory: n.gameState.moveHistory,
-                komi: komiWithHandicapBonus(s.rootNode.gameState.board, rules, n.gameState.komi),
-              })),
-              rules,
-              conservativePass,
-              }),
-            });
-            if (token !== gameAnalysisToken) return;
-            if (!get().isGameAnalysisRunning) return;
-            if (get().gameAnalysisType !== 'quick') return;
-            if (!metaSynced) {
-              const engineInfo = getKataGoEngineClient().getEngineInfo();
-              set({ engineBackend: engineInfo.backend, engineModelName: engineInfo.modelName });
-              metaSynced = true;
-            }
-
-            for (let i = 0; i < toEval.length; i++) {
-              const node = toEval[i]!;
-              const evaled = evals[i]!;
-              const boardSize = getBoardSizeFromBoard(node.gameState.board);
-              node.analysis = {
-                rootWinRate: evaled.rootWinRate,
-                rootScoreLead: evaled.rootScoreLead,
-                rootScoreSelfplay: evaled.rootScoreSelfplay,
-                rootScoreStdev: evaled.rootScoreStdev,
-                moves: [],
-                territory: createEmptyTerritory(boardSize),
-                policy: undefined,
-                ownershipStdev: undefined,
-                ownershipMode: 'none',
-              };
-              node.analysisVisitsRequested = Math.max(node.analysisVisitsRequested ?? 0, 1);
-            }
-          } catch (err) {
-            if (isAnalysisCanceled(err)) {
-              // Queue-level preemption (e.g. live analysis while the user
-              // navigates) aborts the active job without bumping the token.
-              // Skip the chunk and keep reviewing instead of silently dying
-              // with the progress UI stuck on "running".
-              if (stillOwnsRun()) continue;
-              return;
-            }
-            failed += toEval.length;
-            lastFailure = errorMessage(err);
-          }
-        }
-        if (token !== gameAnalysisToken) return;
-        if (!get().isGameAnalysisRunning) return;
-        if (get().gameAnalysisType !== 'quick') return;
-
-        done += chunk.length;
-
-        const now = getAnimationNow();
-        if (now - lastUiUpdate > 120 || done === total) {
-          set((s) => ({
-            gameAnalysisDone: done,
-            gameAnalysisTotal: total,
-            analysisCacheSize: getAnalysisCacheSize(s.rootNode),
-            treeVersion: s.treeVersion + 1,
-          }));
-          lastUiUpdate = now;
-        }
-
-        await sleep(0);
-      }
-
-      if (token !== gameAnalysisToken) return;
-      set((s) => ({
-        isGameAnalysisRunning: false,
-        gameAnalysisType: null,
-        gameAnalysisDone: done,
-        gameAnalysisTotal: total,
-        analysisCacheSize: getAnalysisCacheSize(s.rootNode),
-        treeVersion: s.treeVersion + 1,
-        ...gameAnalysisFailureUpdate('quick', failed, total, lastFailure),
-      }));
-    })();
-  },
-
-  startFastGameAnalysis: (opts) => {
-    const token = ++gameAnalysisToken;
-    analysisQueue.cancelGroup('game-analysis');
-    const state = get();
-    const moveRangeRaw = opts?.moveRange ?? null;
-    const moveRange: [number, number] | null = moveRangeRaw
-      ? [Math.min(moveRangeRaw[0]!, moveRangeRaw[1]!), Math.max(moveRangeRaw[0]!, moveRangeRaw[1]!)]
-      : null;
-
-    const nodes = getCurrentLineNodes(state.rootNode, state.activeBranchChildIds).filter((node) => {
-      if (!moveRange) return true;
-      return nodeIsInMoveRange(node, moveRange) || nodeIsParentOfMoveInRange(node, moveRange);
-    });
-
-    const total = nodes.length;
-    if (total <= 1) {
-      set({ isGameAnalysisRunning: false, gameAnalysisType: null, gameAnalysisDone: 0, gameAnalysisTotal: total });
-      return;
-    }
-
-    set({ isGameAnalysisRunning: true, gameAnalysisType: 'fast', gameAnalysisDone: 0, gameAnalysisTotal: total });
-
-    void (async () => {
-      const boardSize = getBoardSizeFromBoard(state.board);
-      const fastVisits = Math.max(16, Math.min(get().settings.katagoFastVisits, ENGINE_MAX_VISITS));
-      const maxTimeMs = Math.max(50, Math.min(600, Math.floor(get().settings.katagoMaxTimeMs * 0.15)));
-      const batchSize = Math.max(1, Math.min(get().settings.katagoBatchSize, 64));
-      const maxChildren = Math.max(4, Math.min(get().settings.katagoMaxChildren, boardSize * boardSize));
-      const topK = Math.max(1, Math.min(get().settings.katagoTopK, 10));
-      const analysisPvLen = Math.max(0, Math.min(get().settings.katagoAnalysisPvLen, 15));
-
-      let done = 0;
-      let failed = 0;
-      let lastFailure: string | null = null;
-      let lastUiUpdate = getAnimationNow();
-      let metaSynced = false;
-      const stillOwnsRun = () =>
-        token === gameAnalysisToken && get().isGameAnalysisRunning && get().gameAnalysisType === 'fast';
-
-      for (const node of nodes) {
-        if (token !== gameAnalysisToken) return;
-        if (!get().isGameAnalysisRunning) return;
-        if (get().gameAnalysisType !== 'fast') return;
-
-        const already = node.analysis && nodeAnalysisVisitCount(node) >= fastVisits;
-        if (!already) {
-          try {
-            const s = get();
-            const parentBoard = node.parent?.gameState.board;
-            const grandparentBoard = node.parent?.parent?.gameState.board;
-            const modelUrl = resolveModelUrlForFetch(s.settings.katagoModelUrl);
-            const rules = s.settings.gameRules;
-            const analysis = await analysisQueue.enqueue<KataGoAnalysisPayload>({
-              id: `fast-game:${token}:${node.id}`,
-              label: 'Fast game analysis',
-              group: 'game-analysis',
-              priority: ANALYSIS_QUEUE_PRIORITY.fastGame,
-              cacheKey: analysisCacheKey(
-                'fast-game',
-                node.id,
-                nodeAnalysisPositionKey(node, rules),
-                modelUrl,
-                s.settings.katagoBackend,
-                rules,
-                fastVisits,
-                maxTimeMs,
-                batchSize,
-                maxChildren,
-                topK,
-                analysisPvLen,
-                s.settings.katagoWideRootNoise,
-                s.settings.katagoRootPolicyTemperature,
-                s.settings.katagoNnRandomize,
-                s.settings.katagoConservativePass
-              ),
-              run: () => getKataGoEngineClient().analyze({
-              positionId: node.id,
-              parentPositionId: node.parent?.id,
-              positionKey: nodeAnalysisPositionKey(node, rules),
-              parentPositionKey: parentAnalysisPositionKey(node, rules),
-              modelUrl,
-              backend: s.settings.katagoBackend,
-              board: node.gameState.board,
-              previousBoard: parentBoard,
-              previousPreviousBoard: grandparentBoard,
-              currentPlayer: node.gameState.currentPlayer,
-              moveHistory: node.gameState.moveHistory,
-              komi: komiWithHandicapBonus(s.rootNode.gameState.board, rules, node.gameState.komi),
-              rules,
-              topK,
-              analysisPvLen,
-              includeMovesOwnership: false,
-              wideRootNoise: s.settings.katagoWideRootNoise,
-              rootPolicyTemperature: s.settings.katagoRootPolicyTemperature,
-              fillDameBeforePass: s.settings.katagoFillDameBeforePass,
-              nnRandomize: s.settings.katagoNnRandomize,
-              conservativePass: s.settings.katagoConservativePass,
-              visits: fastVisits,
-              maxTimeMs,
-              batchSize,
-              maxChildren,
-              reuseTree: false,
-              ownershipMode: 'none',
-              analysisGroup: 'background',
-              }),
-            });
-            if (token !== gameAnalysisToken) return;
-            if (!get().isGameAnalysisRunning) return;
-            if (get().gameAnalysisType !== 'fast') return;
-            if (!metaSynced) {
-              const engineInfo = getKataGoEngineClient().getEngineInfo();
-              set({ engineBackend: engineInfo.backend, engineModelName: engineInfo.modelName });
-              metaSynced = true;
-            }
-
-            node.analysis = {
-              rootWinRate: analysis.rootWinRate,
-              rootScoreLead: analysis.rootScoreLead,
-              rootScoreSelfplay: analysis.rootScoreSelfplay,
-              rootScoreStdev: analysis.rootScoreStdev,
-              rawWinRate: analysis.rawWinRate,
-              rawScoreLead: analysis.rawScoreLead,
-              rawScoreSelfplay: analysis.rawScoreSelfplay,
-              rawScoreSelfplayStdev: analysis.rawScoreSelfplayStdev,
-              rawNoResultProb: analysis.rawNoResultProb,
-              rawStWrError: analysis.rawStWrError,
-              rawStScoreError: analysis.rawStScoreError,
-              rawVarTimeLeft: analysis.rawVarTimeLeft,
-              moves: analysis.moves,
-              territory: createEmptyTerritory(getBoardSizeFromBoard(node.gameState.board)),
-              policy: undefined,
-              ownershipStdev: undefined,
-              ownershipMode: 'none',
-            };
-            node.analysisVisitsRequested = fastVisits;
-          } catch (err) {
-            if (isAnalysisCanceled(err)) {
-              // Queue-level preemption (e.g. live analysis while the user
-              // navigates) aborts the active job without bumping the token.
-              // Skip the node and keep reviewing instead of silently dying
-              // with the progress UI stuck on "running".
-              if (stillOwnsRun()) continue;
-              return;
-            }
-            failed++;
-            lastFailure = errorMessage(err);
-          }
-        }
-        if (token !== gameAnalysisToken) return;
-        if (!get().isGameAnalysisRunning) return;
-        if (get().gameAnalysisType !== 'fast') return;
-
-        done++;
-
-        const now = getAnimationNow();
-        if (now - lastUiUpdate > 120 || done === total) {
-          set((s) => ({
-            gameAnalysisDone: done,
-            gameAnalysisTotal: total,
-            analysisCacheSize: getAnalysisCacheSize(s.rootNode),
-            treeVersion: s.treeVersion + 1,
-          }));
-          lastUiUpdate = now;
-        }
-
-        await sleep(0);
-      }
-
-      if (token !== gameAnalysisToken) return;
-      set((s) => ({
-        isGameAnalysisRunning: false,
-        gameAnalysisType: null,
-        gameAnalysisDone: done,
-        gameAnalysisTotal: total,
-        analysisCacheSize: getAnalysisCacheSize(s.rootNode),
-        treeVersion: s.treeVersion + 1,
-        ...gameAnalysisFailureUpdate('fast', failed, total, lastFailure),
-      }));
-    })();
-  },
-
-  startFullGameAnalysis: (opts) => {
-    const token = ++gameAnalysisToken;
-    analysisQueue.cancelGroup('game-analysis');
-    const state = get();
-
-    const visits = Math.max(16, Math.min(Math.floor(opts.visits || 0), ENGINE_MAX_VISITS));
-    const moveRangeRaw = opts.moveRange ?? null;
-    const moveRange: [number, number] | null = moveRangeRaw
-      ? [Math.min(moveRangeRaw[0]!, moveRangeRaw[1]!), Math.max(moveRangeRaw[0]!, moveRangeRaw[1]!)]
-      : null;
-    const mistakesOnly = opts.mistakesOnly === true;
-
-    const thresholds = state.settings.trainerEvalThresholds?.length ? state.settings.trainerEvalThresholds : [12, 6, 3, 1.5, 0.5, 0];
-    const mistakesThreshold =
-      thresholds.length >= 4 ? thresholds[thresholds.length - 4]! : 3;
-    const nodes = selectFullGameAnalysisNodes({
-      rootNode: state.rootNode,
-      moveRange,
-      mistakesOnly,
-      mistakesThreshold,
-    });
-    const total = nodes.length;
-    if (total <= 1) {
-      set({ isGameAnalysisRunning: false, gameAnalysisType: null, gameAnalysisDone: 0, gameAnalysisTotal: total });
-      return;
-    }
-
-    set({ isGameAnalysisRunning: true, gameAnalysisType: 'full', gameAnalysisDone: 0, gameAnalysisTotal: total });
-
-    void (async () => {
-      let done = 0;
-      let failed = 0;
-      let lastFailure: string | null = null;
-      let lastUiUpdate = getAnimationNow();
-      let metaSynced = false;
-      const stillOwnsRun = () =>
-        token === gameAnalysisToken && get().isGameAnalysisRunning && get().gameAnalysisType === 'full';
-
-      for (const node of nodes) {
-        if (token !== gameAnalysisToken) return;
-        if (!get().isGameAnalysisRunning) return;
-        if (get().gameAnalysisType !== 'full') return;
-
-        const already = node.analysis && node.analysis.moves.length > 0 && nodeAnalysisVisitCount(node) >= visits;
-        if (!already) {
-          try {
-            const s = get();
-            const parentBoard = node.parent?.gameState.board;
-            const grandparentBoard = node.parent?.parent?.gameState.board;
-            const maxTimeMs = ENGINE_MAX_TIME_MS;
-            const batchSize = Math.max(1, Math.min(s.settings.katagoBatchSize, 64));
-            const boardSize = getBoardSizeFromBoard(node.gameState.board);
-            const maxChildren = Math.max(4, Math.min(s.settings.katagoMaxChildren, boardSize * boardSize));
-            const topK = Math.max(5, Math.min(s.settings.katagoTopK, 50));
-            const analysisPvLen = Math.max(0, Math.min(s.settings.katagoAnalysisPvLen, 60));
-            const modelUrl = resolveModelUrlForFetch(s.settings.katagoModelUrl);
-            const rules = s.settings.gameRules;
-
-            const analysis = await analysisQueue.enqueue<KataGoAnalysisPayload>({
-              id: `full-game:${token}:${node.id}`,
-              label: 'Full game analysis',
-              group: 'game-analysis',
-              priority: ANALYSIS_QUEUE_PRIORITY.fullGame,
-              cacheKey: analysisCacheKey(
-                'full-game',
-                node.id,
-                nodeAnalysisPositionKey(node, rules),
-                modelUrl,
-                s.settings.katagoBackend,
-                rules,
-                visits,
-                maxTimeMs,
-                batchSize,
-                maxChildren,
-                topK,
-                analysisPvLen,
-                s.settings.katagoOwnershipMode,
-                s.settings.katagoWideRootNoise,
-                s.settings.katagoNnRandomize,
-                s.settings.katagoConservativePass,
-              ),
-              run: () => getKataGoEngineClient().analyze({
-              positionId: node.id,
-              parentPositionId: node.parent?.id,
-              positionKey: nodeAnalysisPositionKey(node, rules),
-              parentPositionKey: parentAnalysisPositionKey(node, rules),
-              modelUrl,
-              backend: s.settings.katagoBackend,
-              board: node.gameState.board,
-              previousBoard: parentBoard,
-              previousPreviousBoard: grandparentBoard,
-              currentPlayer: node.gameState.currentPlayer,
-              moveHistory: node.gameState.moveHistory,
-              komi: komiWithHandicapBonus(s.rootNode.gameState.board, rules, node.gameState.komi),
-              rules,
-              topK,
-              analysisPvLen,
-              includeMovesOwnership: s.settings.katagoOwnershipMode === 'tree',
-              wideRootNoise: s.settings.katagoWideRootNoise,
-              rootPolicyTemperature: s.settings.katagoRootPolicyTemperature,
-              fillDameBeforePass: s.settings.katagoFillDameBeforePass,
-              nnRandomize: s.settings.katagoNnRandomize,
-              conservativePass: s.settings.katagoConservativePass,
-              visits,
-              maxTimeMs,
-              batchSize,
-              maxChildren,
-              reuseTree: false,
-              ownershipMode: s.settings.katagoOwnershipMode,
-              analysisGroup: 'background',
-              }),
-            });
-            if (token !== gameAnalysisToken) return;
-            if (!get().isGameAnalysisRunning) return;
-            if (get().gameAnalysisType !== 'full') return;
-
-            if (!metaSynced) {
-              const engineInfo = getKataGoEngineClient().getEngineInfo();
-              set({ engineBackend: engineInfo.backend, engineModelName: engineInfo.modelName });
-              metaSynced = true;
-            }
-
-            node.analysis = {
-              rootWinRate: analysis.rootWinRate,
-              rootScoreLead: analysis.rootScoreLead,
-              rootScoreSelfplay: analysis.rootScoreSelfplay,
-              rootScoreStdev: analysis.rootScoreStdev,
-              rootVisits: analysis.rootVisits,
-              rawWinRate: analysis.rawWinRate,
-              rawScoreLead: analysis.rawScoreLead,
-              rawScoreSelfplay: analysis.rawScoreSelfplay,
-              rawScoreSelfplayStdev: analysis.rawScoreSelfplayStdev,
-              rawNoResultProb: analysis.rawNoResultProb,
-              rawStWrError: analysis.rawStWrError,
-              rawStScoreError: analysis.rawStScoreError,
-              rawVarTimeLeft: analysis.rawVarTimeLeft,
-              moves: analysis.moves,
-              territory: ownershipToTerritoryGrid(analysis.ownership, boardSize),
-              policy: analysis.policy,
-              ownershipStdev: analysis.ownershipStdev,
-              ownershipMode: s.settings.katagoOwnershipMode,
-            };
-            node.analysisVisitsRequested = Math.max(node.analysisVisitsRequested ?? 0, visits);
-          } catch (err) {
-            if (isAnalysisCanceled(err)) {
-              // Queue-level preemption (e.g. live analysis while the user
-              // navigates) aborts the active job without bumping the token.
-              // Skip the node and keep reviewing instead of silently dying
-              // with the progress UI stuck on "running".
-              if (stillOwnsRun()) continue;
-              return;
-            }
-            failed++;
-            lastFailure = errorMessage(err);
-          }
-        }
-        if (token !== gameAnalysisToken) return;
-        if (!get().isGameAnalysisRunning) return;
-        if (get().gameAnalysisType !== 'full') return;
-
-        done++;
-
-        const now = getAnimationNow();
-        if (now - lastUiUpdate > 120 || done === total) {
-          set((s) => ({
-            gameAnalysisDone: done,
-            gameAnalysisTotal: total,
-            analysisCacheSize: getAnalysisCacheSize(s.rootNode),
-            treeVersion: s.treeVersion + 1,
-          }));
-          lastUiUpdate = now;
-        }
-
-        await sleep(0);
-      }
-
-      if (token !== gameAnalysisToken) return;
-      set((s) => ({
-        isGameAnalysisRunning: false,
-        gameAnalysisType: null,
-        gameAnalysisDone: done,
-        gameAnalysisTotal: total,
-        analysisCacheSize: getAnalysisCacheSize(s.rootNode),
-        treeVersion: s.treeVersion + 1,
-        ...gameAnalysisFailureUpdate('full', failed, total, lastFailure),
-      }));
-    })();
-  },
-
-  stopGameAnalysis: () => {
-    gameAnalysisToken++;
-    analysisQueue.cancelGroup('game-analysis');
-    set({ isGameAnalysisRunning: false, gameAnalysisType: null });
-  },
-
   runAnalysis: async (opts) => {
       const state = get();
-      if (!state.isAnalysisMode) return;
 
       // Check if current node already has analysis
       const desiredVisits = Math.max(16, Math.min(opts?.visits ?? state.settings.katagoVisits, ENGINE_MAX_VISITS));
@@ -2564,7 +1806,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
           const reportDuringSearchEveryMs = reportEveryMs > 0 ? reportEveryMs : undefined;
           const progressApplyMinMs = reportEveryMs > 0 ? Math.max(reportEveryMs, PROGRESS_APPLY_MIN_MS) : 0;
           let lastProgressVisits = -1;
-          let lastProgressApplyAt = 0;
           let lastTreeUpdateAt = 0;
           let lastTerritoryUpdateAt = 0;
           const treeUpdateEveryMs = reportEveryMs > 0 ? reportEveryMs : 0;
@@ -2660,9 +1901,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
                 const visits = typeof analysis.rootVisits === 'number' ? analysis.rootVisits : 0;
                 if (visits <= lastProgressVisits) return;
                 const now = getAnimationNow();
-                if (progressApplyMinMs > 0 && now - lastProgressApplyAt < progressApplyMinMs) return;
                 lastProgressVisits = visits;
-                lastProgressApplyAt = now;
                 applyAnalysis(analysis, false, now);
               }
             : undefined;
@@ -2697,6 +1936,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       // whole session while results were already on the board. A reported
       // backend means the net is resident, so only a cold or failed engine
       // goes back to loading.
+      const engineClient = getKataGoEngineClient();
+      const needsEngineLoad = state.engineStatus !== 'ready' || !state.engineBackend;
+      if (needsEngineLoad) set({ engineStatus: 'loading', engineError: null });
+      await engineClient.init(modelUrl, state.settings.katagoBackend);
+      const initializedInfo = engineClient.getEngineInfo();
+      set({ engineStatus: 'ready', engineBackend: initializedInfo.backend, engineModelName: initializedInfo.modelName });
+
       set((s) => (s.engineBackend && s.engineStatus !== 'error'
         ? { engineError: null }
         : { engineStatus: 'loading', engineError: null }));
@@ -2821,6 +2067,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             engineError: msg,
             notification,
           });
+          if (opts?.propagateErrors) throw err;
         });
   },
 
@@ -2850,8 +2097,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (!engineChanged) return { settings: nextSettings };
 
       continuousToken++;
-      selfplayToken++;
-      gameAnalysisToken++;
+      continuousSearchMsByNodeId.clear();
       analysisQueue.cancelWhere(() => true, 'Analysis settings changed');
       analysisQueue.clearCache();
 
@@ -2878,10 +2124,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         engineModelName: null,
         analysisCacheSize: 0,
         isContinuousAnalysis: false,
-        isSelfplayToEnd: false,
-        isGameAnalysisRunning: false,
-        gameAnalysisType: null,
-        ...history,
+                          ...history,
         treeVersion: rulesChanged ? state.treeVersion + 1 : state.treeVersion,
       };
     }),
@@ -2905,8 +2148,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
 
     continuousToken++;
-    selfplayToken++;
-    gameAnalysisToken++;
+    continuousSearchMsByNodeId.clear();
     analysisQueue.cancelWhere(() => true, 'Komi changed');
     analysisQueue.clearCache();
 
@@ -2927,10 +2169,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         analysisData: null,
         analysisCacheSize: 0,
         isContinuousAnalysis: false,
-        isSelfplayToEnd: false,
-        isGameAnalysisRunning: false,
-        gameAnalysisType: null,
-        engineStatus: 'idle',
+                          engineStatus: 'idle',
         engineError: null,
         ...history,
         treeVersion: state.treeVersion + 1,
@@ -2984,8 +2223,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
 
     continuousToken++;
-    selfplayToken++;
-    gameAnalysisToken++;
+    continuousSearchMsByNodeId.clear();
     analysisQueue.cancelWhere(() => true, 'Handicap changed');
     analysisQueue.clearCache();
 
@@ -3027,10 +2265,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         analysisData: null,
         analysisCacheSize: 0,
         isContinuousAnalysis: false,
-        isSelfplayToEnd: false,
-        isGameAnalysisRunning: false,
-        gameAnalysisType: null,
-        engineStatus: 'idle',
+                          engineStatus: 'idle',
         engineError: null,
         ...history,
         treeVersion: state.treeVersion + 1,
@@ -3206,203 +2441,38 @@ export const useGameStore = create<GameStore>((set, get) => ({
           if (!latest.isAiThinking) void latest.makeAiMove();
         }, 500);
       }
-	      if (newState.isAnalysisMode && !newState.isSelfplayToEnd) {
-	          setTimeout(() => void get().runAnalysis(), 500);
-	      }
 	    }
 	  },
 
-	  makeAiMove: (opts) => {
-	      const force = opts?.force ?? false;
-	      const state = get();
-	      // `force` lets the on-demand "AI move" buttons play one engine move for
-	      // the side to move even outside an AI game or on the human's turn.
-	      if (!force) {
-	        if (!state.isAiPlaying || !state.aiColor) return;
-	        if (state.currentPlayer !== state.aiColor) return;
-	      }
-
-      const node = state.currentNode;
-      const nodeId = node.id;
-      const playerAtStart = state.currentPlayer;
-      const requestEpoch = aiRequestEpoch;
-      const isCurrentRequest = (): boolean => aiRequestEpoch === requestEpoch;
-
-	      const parentBoard = node.parent?.gameState.board;
-	      const grandparentBoard = node.parent?.parent?.gameState.board;
-	      const modelUrl = resolveModelUrlForFetch(state.settings.katagoModelUrl);
-        const rules = state.settings.gameRules;
-        const analysisPvLen = state.settings.katagoAnalysisPvLen;
-        const wideRootNoise = 0;
-        const rootPolicyTemperature = 1;
-        const fillDameBeforePass = state.settings.katagoFillDameBeforePass;
-        const nnRandomize = false;
-        const conservativePass = state.settings.katagoConservativePass;
-        const topK = state.settings.katagoTopK;
-        const visits = Math.max(16, Math.min(state.settings.katagoVisits, ENGINE_MAX_VISITS));
-        const maxTimeMs = Math.max(25, Math.min(state.settings.katagoMaxTimeMs, ENGINE_MAX_TIME_MS));
-        const batchSize = state.settings.katagoBatchSize;
-        const maxChildren = state.settings.katagoMaxChildren;
-        const positionKey = nodeAnalysisPositionKey(node, rules);
-        const parentPositionKeyValue = parentAnalysisPositionKey(node, rules);
-
-      // An AI move can take many seconds. Without this the engine pill kept
-      // reading "KataGo ready" the whole time, so a thinking AI was
-      // indistinguishable from a hung one.
-      set({ isAiThinking: true });
-      // The canceled branch below reschedules itself; keep the indicator lit
-      // across that hand-off instead of flickering off for 100ms.
-      let retryScheduled = false;
-      let timedOut = false;
-      let timeoutId: ReturnType<typeof setTimeout> | null = null;
-      // The Worker owns the search deadline and returns its current best move
-      // when maxTimeMs expires. Do not start a second wall-clock timer here:
-      // queueing, model warm-up, and backend initialization can legitimately
-      // consume more than the search budget and would cancel every AI move.
-
-      void analysisQueue
-        .enqueue<KataGoAnalysisPayload>({
-          id: `ai-move:${nodeId}`,
-          label: 'AI move',
-          group: 'ai-move',
-          priority: ANALYSIS_QUEUE_PRIORITY.aiMove,
-          staleKey: `ai-move:${playerAtStart}`,
-          cacheKey: analysisCacheKey(
-            'ai-move',
-            nodeId,
-            positionKey,
-            modelUrl,
-            state.settings.katagoBackend,
-            rules,
-            topK,
-            analysisPvLen,
-            conservativePass,
-            visits,
-            maxTimeMs,
-            batchSize,
-            maxChildren,
-            state.settings.katagoReuseTree,
-            state.settings.katagoOwnershipMode,
-          ),
-          preempt: true,
-          run: () => getKataGoEngineClient().analyze({
-	          positionId: nodeId,
-	          parentPositionId: node.parent?.id,
-            positionKey,
-            parentPositionKey: parentPositionKeyValue,
-	          modelUrl,
-            backend: state.settings.katagoBackend,
-	          board: state.board,
-	          previousBoard: parentBoard,
-	          previousPreviousBoard: grandparentBoard,
-	          currentPlayer: state.currentPlayer,
-	          moveHistory: state.moveHistory,
-	          komi: komiWithHandicapBonus(state.rootNode.gameState.board, rules, state.komi),
-            rules,
-	          topK,
-            includeMovesOwnership: false,
-            analysisPvLen,
-            wideRootNoise,
-            rootPolicyTemperature,
-            fillDameBeforePass,
-            nnRandomize,
-            conservativePass,
-          visits,
-          maxTimeMs,
-          batchSize,
-          maxChildren,
-          reuseTree: state.settings.katagoReuseTree,
-          ownershipMode: state.settings.katagoOwnershipMode,
-          reportDuringSearchEveryMs: 250,
-          onProgress: (progress) => {
-            if (isCurrentRequest()) {
-              node.analysisVisitsRequested = progress.rootVisits;
-              set({ treeVersion: get().treeVersion + 1 });
-            }
-          },
-          // AI moves share the interactive channel so a timed-out search can
-          // be superseded immediately by the next recommendation request.
-          analysisGroup: 'interactive',
-          }),
-        })
-        .then((analysis) => {
-          if (timedOut) return;
-          const engineInfo = getKataGoEngineClient().getEngineInfo();
-          set({ engineBackend: engineInfo.backend, engineModelName: engineInfo.modelName });
-
-          const latest = get();
-          if (!isCurrentRequest()) return;
-          if (latest.currentNode.id !== nodeId) return;
-          if (latest.currentPlayer !== playerAtStart) return;
-          if (!force && (!latest.isAiPlaying || latest.aiColor !== playerAtStart)) return;
-          const boardSize = getBoardSizeFromBoard(latest.board);
-
-          const analysisWithTerritory: AnalysisResult = {
-            rootWinRate: analysis.rootWinRate,
-            rootScoreLead: analysis.rootScoreLead,
-            rootScoreSelfplay: analysis.rootScoreSelfplay,
-            rootScoreStdev: analysis.rootScoreStdev,
-            rootVisits: analysis.rootVisits,
-            rawWinRate: analysis.rawWinRate,
-            rawScoreLead: analysis.rawScoreLead,
-            rawScoreSelfplay: analysis.rawScoreSelfplay,
-            rawScoreSelfplayStdev: analysis.rawScoreSelfplayStdev,
-            rawNoResultProb: analysis.rawNoResultProb,
-            rawStWrError: analysis.rawStWrError,
-            rawStScoreError: analysis.rawStScoreError,
-            rawVarTimeLeft: analysis.rawVarTimeLeft,
-            moves: analysis.moves,
-            territory: ownershipToTerritoryGrid(analysis.ownership, boardSize),
-            policy: analysis.policy,
-            ownershipStdev: analysis.ownershipStdev,
-            ownershipMode: latest.settings.katagoOwnershipMode,
-          };
-
-          // Cache analysis on the node we analyzed.
-          node.analysis = analysisWithTerritory;
-
-          const moves = analysisWithTerritory.moves ?? [];
-          const best = moves.find((m) => m.order === 0) ?? moves[0] ?? null;
-          if (!best) {
-            makeHeuristicMove(get());
-            set({ isAiThinking: false });
-            return;
-          }
-          if (best.x < 0 || best.y < 0) get().passTurn();
-          else get().playMove(best.x, best.y);
-
-          const after = get();
-          // playMove invalidates the request epoch because it changes the
-          // visible position; the move itself has already been committed.
-          set({ isAiThinking: false });
-          const bestLabel =
-            best.x < 0 || best.y < 0
-              ? 'pass'
-              : `${String.fromCharCode(65 + (best.x >= 8 ? best.x + 1 : best.x))}${boardSize - best.y}`;
-          after.currentNode.aiThoughts = `Played the top move ${bestLabel}.`;
-          set((s) => ({ treeVersion: s.treeVersion + 1 }));
-        })
-        .catch((err) => {
-          if (timedOut) return;
-          if (isAnalysisCanceled(err)) {
-            const latest = get();
-            if (!isCurrentRequest()) return;
-            if (latest.currentNode.id !== nodeId) return;
-            if (latest.currentPlayer !== playerAtStart) return;
-            if (!force && (!latest.isAiPlaying || latest.aiColor !== playerAtStart)) return;
-            retryScheduled = true;
-            setTimeout(() => latest.makeAiMove(force ? { force: true } : undefined), 100);
-            return;
-          }
-          const latest = get();
-          if (!isCurrentRequest() || latest.currentNode.id !== nodeId || latest.currentPlayer !== playerAtStart) return;
-          makeHeuristicMove(latest);
-          set({ isAiThinking: false });
-        })
-        .finally(() => {
-          if (timeoutId) clearTimeout(timeoutId);
-          if (!retryScheduled && isCurrentRequest()) set({ isAiThinking: false });
-        });
+  makeAiMove: (opts) => {
+    const force = opts?.force ?? false;
+    const initial = get();
+    if (!force && (!initial.isAiPlaying || !initial.aiColor || initial.currentPlayer !== initial.aiColor)) return;
+    const nodeId = initial.currentNode.id;
+    const playerAtStart = initial.currentPlayer;
+    const epoch = aiRequestEpoch;
+    const thinkingMs = Math.max(25, Math.min(initial.settings.katagoMaxTimeMs, ENGINE_MAX_TIME_MS));
+    set({ isAiThinking: true, isAnalysisMode: true });
+    if (!initial.isContinuousAnalysis) get().toggleContinuousAnalysis(true);
+    void (async () => {
+      await sleep(thinkingMs);
+      while (true) {
+        const latest = get();
+        if (aiRequestEpoch !== epoch || latest.currentNode.id !== nodeId || latest.currentPlayer !== playerAtStart) return;
+        if (!force && (!latest.isAiPlaying || latest.aiColor !== playerAtStart)) return;
+        if (latest.currentNode.analysis?.moves?.length) break;
+        await sleep(25);
+      }
+      const latest = get();
+      if (aiRequestEpoch !== epoch || latest.currentNode.id !== nodeId || latest.currentPlayer !== playerAtStart) return;
+      if (!force && (!latest.isAiPlaying || latest.aiColor !== playerAtStart)) return;
+      const best = latest.currentNode.analysis?.moves?.[0];
+      if (!best) return;
+      set({ isAiThinking: false });
+      if (best.x < 0 || best.y < 0) latest.passTurn(); else latest.playMove(best.x, best.y);
+    })().catch(() => {
+      if (aiRequestEpoch === epoch) set({ isAiThinking: false });
+    });
   },
 
   undoMove: () => {
@@ -3960,8 +3030,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   startNewGame: ({ komi, rules, boardSize, handicap }) => {
     const state = get();
     invalidateAiRequests('Started new game');
-    get().stopSelfplayToEnd();
-    get().stopGameAnalysis();
     analysisQueue.cancelWhere(() => true, 'Started new game');
     analysisQueue.clearCache();
     if (state.settings.soundEnabled) {
@@ -4015,12 +3083,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       insertAnchorNodeId: null,
       isEditMode: false,
       editTool: 'setup-black',
-      isSelfplayToEnd: false,
       isAiPlaying: false,
       isAiThinking: false,
       aiColor: null,
       analysisData: null,
       analysisCacheSize: 0,
+      engineStatus: state.engineStatus,
+      engineError: state.engineError,
       timerPaused: true,
       timerMainTimeUsedSeconds: 0,
       timerPeriodsUsed: { black: 0, white: 0 },
@@ -4036,8 +3105,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   resetGame: () => {
     const state = get();
     invalidateAiRequests('Reset game');
-    get().stopSelfplayToEnd();
-    get().stopGameAnalysis();
     analysisQueue.cancelWhere(() => true, 'Reset game');
     analysisQueue.clearCache();
     if (state.settings.soundEnabled) {
@@ -4069,8 +3136,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       insertAnchorNodeId: null,
       isEditMode: false,
       editTool: 'setup-black',
-      isSelfplayToEnd: false,
-      isAiPlaying: false,
+          isAiPlaying: false,
       isAiThinking: false,
       aiColor: null,
       analysisData: null,
@@ -4377,10 +3443,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
 	      settings: { ...state.settings, gameRules: rules, defaultBoardSize: boardSize, defaultHandicap: safeHandicap },
 		    }));
 
-		    // KaTrain-like: optionally start fast background analysis of the whole mainline so graphs populate fast.
-		    if (typeof window !== 'undefined' && typeof Worker !== 'undefined' && get().settings.loadSgfFastAnalysis) {
-		      setTimeout(() => get().startFastGameAnalysis(), 0);
-		    }
 		  },
 
   passTurn: () => {
@@ -4402,9 +3464,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
            const ended = isPassMove(after.currentNode.move) && isPassMove(after.currentNode.parent?.move);
            if (!ended && after.isAiPlaying && after.aiColor && after.currentPlayer === after.aiColor) {
              setTimeout(() => after.makeAiMove(), 500);
-           }
-           if (after.isAnalysisMode && !after.isSelfplayToEnd) {
-             setTimeout(() => void after.runAnalysis(), 0);
            }
            return;
       }
@@ -4437,7 +3496,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (!ended && after.isAiPlaying && after.aiColor && after.currentPlayer === after.aiColor) {
         setTimeout(() => after.makeAiMove(), 500);
       }
-      if (after.isAnalysisMode && !after.isSelfplayToEnd) setTimeout(() => void after.runAnalysis(), 0);
   },
 
   resign: (player) => {
@@ -4449,7 +3507,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!state.rootNode.properties) state.rootNode.properties = {};
     state.rootNode.properties.RE = [endState];
 
-    get().stopSelfplayToEnd();
 
     set((s) => ({
       isAiPlaying: false,
@@ -4527,125 +3584,3 @@ analysisQueue.subscribeCacheSize((queueCacheSize) => {
     analysisCacheSize: Math.max(countAnalyzedNodes(state.rootNode), queueCacheSize),
   }));
 });
-
-const makeHeuristicMove = (store: GameStore) => {
-    const { board, currentPlayer, currentNode } = store;
-    const parentBoard = currentNode.parent ? currentNode.parent.gameState.board : undefined;
-    const boardSize = getBoardSizeFromBoard(board);
-    const center = (boardSize - 1) / 2;
-    const line3 = 2;
-    const line4 = 3;
-    const line3Far = boardSize - 3;
-    const line4Far = boardSize - 4;
-
-    // 1. Get all legal moves
-    const legalMoves = getLegalMoves(board, currentPlayer, parentBoard);
-
-    if (legalMoves.length === 0) {
-        store.passTurn();
-        return;
-    }
-
-    // Heuristics
-    // Score each move
-    let bestMove = legalMoves[0];
-    let bestScore = -Infinity;
-
-    // Helper: simulate move
-	    const simulate = (x: number, y: number) => {
-	        const tentativeBoard = board.map(row => [...row]);
-	        tentativeBoard[y][x] = currentPlayer;
-	        const captured = applyCapturesInPlace(tentativeBoard, x, y, currentPlayer);
-	        return { captured, newBoard: tentativeBoard };
-	    };
-
-    for (const move of legalMoves) {
-        let score = Math.random() * 5; // Base random score to break ties
-        const { x, y } = move;
-
-        // A. Don't fill own eyes
-        if (isEye(board, x, y, currentPlayer)) {
-            score -= 1000;
-        }
-
-        const { captured, newBoard } = simulate(x, y);
-
-        // B. Capture Groups (Atari)
-        if (captured.length > 0) {
-            score += 100 * captured.length;
-        }
-
-        // C. Avoid Self-Atari (unless capturing)
-        const { liberties } = getLiberties(newBoard, x, y);
-        if (liberties === 1) {
-            // Is it a snapback? Or just dumb?
-            // If we captured something, maybe okay. If not, bad.
-            if (captured.length === 0) {
-                score -= 50;
-            }
-        }
-
-        // D. Save own stones in Atari
-        // Check neighbors
-        const neighbors = [
-            {x: x+1, y}, {x: x-1, y}, {x, y: y+1}, {x, y: y-1}
-        ];
-        for (const n of neighbors) {
-            if (n.x >= 0 && n.x < boardSize && n.y >= 0 && n.y < boardSize) {
-                if (board[n.y][n.x] === currentPlayer) {
-                    const groupLiberties = getLiberties(board, n.x, n.y).liberties;
-                    if (groupLiberties === 1) {
-                        // Playing here saves it?
-                         const newLibs = getLiberties(newBoard, x, y).liberties;
-                         if (newLibs > 1) {
-                             score += 80; // Saving throw
-                         }
-                    }
-                }
-            }
-        }
-
-        // E. Opening Heuristics (Corners > Edges > Center)
-        if (store.moveHistory.length < 30) {
-             const distToCenter = Math.abs(x - center) + Math.abs(y - center); // Used indirectly
-             // Prefer lines 3 and 4
-             const onLine3or4 = (
-               x === line3 ||
-               x === line4 ||
-               x === line3Far ||
-               x === line4Far ||
-               y === line3 ||
-               y === line4 ||
-               y === line3Far ||
-               y === line4Far
-             );
-
-             if (onLine3or4) score += 5;
-
-             // Avoid 1-1, 2-2 early on
-             if (x <= 1 || x >= boardSize - 2 || y <= 1 || y >= boardSize - 2) score -= 5;
-
-             // Add small bias for center if not on line 3/4
-             if (!onLine3or4 && distToCenter < 6) score += 1;
-        }
-
-        // F. Proximity to last move (Local response)
-        const lastMove = store.moveHistory.length > 0 ? store.moveHistory[store.moveHistory.length - 1] : null;
-        if (lastMove && lastMove.x !== -1) {
-            const dist = Math.abs(lastMove.x - x) + Math.abs(lastMove.y - y);
-            if (dist <= 3) score += 5;
-        }
-
-        if (score > bestScore) {
-            bestScore = score;
-            bestMove = move;
-        }
-    }
-
-    if (bestScore < -500) {
-        // If best move is terrible (e.g. filling eye), pass.
-        store.passTurn();
-    } else {
-        store.playMove(bestMove.x, bestMove.y);
-    }
-};
