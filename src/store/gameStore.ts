@@ -2590,7 +2590,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
               moves: analysis.moves,
               territory: opts.includeTerritory ? ownershipToTerritoryGrid(analysis.ownership, boardSize) : opts.fallbackTerritory,
               policy: analysis.policy,
-              humanPolicy: analysis.humanPolicy,
               ownershipStdev: analysis.ownershipStdev,
               ownershipMode: state.settings.katagoOwnershipMode,
             };
@@ -3355,7 +3354,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
             moves: analysis.moves,
             territory: ownershipToTerritoryGrid(analysis.ownership, boardSize),
             policy: analysis.policy,
-            humanPolicy: analysis.humanPolicy,
             ownershipStdev: analysis.ownershipStdev,
             ownershipMode: latest.settings.katagoOwnershipMode,
           };
