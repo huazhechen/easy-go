@@ -164,7 +164,6 @@ The store uses the engine in several ways:
 - Interactive analysis: current-position search for the board UI.
 - Continuous analysis: automatically refreshes as the current node changes.
 - AI move selection: runs analysis and plays the search's top-ranked move.
-- Self-play to end: repeats AI move selection until the game is complete.
 
 The main-thread `analysisQueue` handles cancellation, staleness, priority, and
 cache reuse before requests reach the worker.

@@ -25,9 +25,15 @@ The main thread owns the user experience:
 
 - `src/main.tsx` mounts React.
 - `src/App.tsx` is the top-level app component.
-- `src/components/BattleApp.tsx` is the whole game screen: board, new-game
-  dialog, model download, move/pass/undo controls, score judgment, and the
-  recommendation overlay.
+- `src/components/BattleApp.tsx` composes the game screen from focused pieces:
+  `MatchCard` (win-rate bar), `BoardGrid` (stones, coordinates, hints,
+  territory, hover preview, thinking scanline), `BattleActions` (move/pass/
+  undo/score/recommendation controls), and the `dialogs/` (new game, B18 model
+  download, score result).
+- `src/hooks/` owns the screen's orchestration: `useModelManager` (model tiers,
+  thinking times, B18 download), `useHintMode` (off/peek/always recommendations),
+  `useScoreJudgment` (one-tap territory scoring), and `useDisplayWinRate`
+  (smooth win-rate display across position changes).
 
 The React components do not talk to the worker directly. They read state and
 call actions from `useGameStore`.
@@ -41,11 +47,20 @@ call actions from `useGameStore`.
   `GameState`, SGF root properties, and optional analysis.
 - Modes such as analysis, continuous analysis, and AI play.
 - Settings, including model URL, TensorFlow.js backend preference, visits,
-  thinking time, board size, rules, and overlay toggles.
+  thinking time, board size, rules, and hint visibility.
 - Persistence for settings and uploaded model state.
 
 Analysis results are attached to game-tree nodes so the current position keeps
 its cached numbers when navigating back and forward.
+
+The store file stays focused on the store definition. Supporting logic lives in
+three sibling modules:
+
+- `src/store/settings.ts` — settings defaults, persistence, and migration.
+- `src/store/gameTree.ts` — game-node construction, position keys, and SGF
+  root-property helpers.
+- `src/store/analysis.ts` — continuous-search scheduling, queue priorities,
+  and AI-request epoch invalidation.
 
 ## Engine Boundary
 

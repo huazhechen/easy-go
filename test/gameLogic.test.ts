@@ -32,19 +32,9 @@ describe('Game Logic', () => {
     // White at 0,0. Liberties at 0,1 and 1,0.
     // Place Black at 0,1 and 1,0.
 
-    // We are simulating the move that captures.
-    // Suppose Black plays at 0,1.
-    // And assume 1,0 is already Black.
-
-    // Let's set up the board *before* the capturing move is checked by checkCaptures
-    // checkCaptures takes the board *after* the move is tentatively placed on the board?
-    // In gameStore.ts:
-    //    const tentativeBoard = state.board.map((row) => [...row]);
-    //    tentativeBoard[y][x] = state.currentPlayer;
-    //    const { captured, newBoard } = checkCaptures(tentativeBoard, x, y, state.currentPlayer);
-
-    // So checkCaptures expects the stone to be already on the board.
-
+    // checkCaptures simulates the capturing move itself: it places the stone
+    // at (x, y) (a no-op when it is already there) and removes opponent
+    // groups with no liberties left.
     const tentativeBoard = createEmptyBoard();
     tentativeBoard[0][0] = 'white';
     tentativeBoard[1][0] = 'black';
@@ -54,7 +44,14 @@ describe('Game Logic', () => {
 
     expect(captured.length).toBe(1);
     expect(captured[0]).toEqual({ x: 0, y: 0 });
+    expect(newBoard[0][1]).toBe('black');
     expect(newBoard[0][0]).toBeNull();
+  });
+
+  it('places the played stone in the simulated board', () => {
+    const board = createEmptyBoard();
+    const { newBoard } = checkCaptures(board, 3, 3, 'black');
+    expect(newBoard[3]![3]).toBe('black');
   });
 
   it('ignores invalid store play coordinates instead of throwing', () => {

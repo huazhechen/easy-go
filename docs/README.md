@@ -21,9 +21,11 @@ developer workflow.
 | Area | Main files |
 | --- | --- |
 | App shell | `src/App.tsx`, `src/main.tsx`, `src/components/BattleApp.tsx` |
-| Global state | `src/store/gameStore.ts`, `src/types.ts` |
+| UI components | `src/components/` (match card, board grid, actions, dialogs, toasts) |
+| UI hooks | `src/hooks/` (model manager, hint modes, score judgment, win-rate display) |
+| Global state | `src/store/gameStore.ts` plus `src/store/settings.ts`, `src/store/gameTree.ts`, `src/store/analysis.ts` |
 | Engine client and worker | `src/engine/katago/client.ts`, `src/engine/katago/worker.ts` |
 | MCTS and board engine | `src/engine/katago/analyzeMcts.ts`, `src/engine/katago/fastBoard.ts` |
 | Model parsing and inference | `src/engine/katago/loadModelV8.ts`, `src/engine/katago/modelV8.ts` |
-| Utilities | `src/utils/` (game logic, board size, storage, sound, analysis queue) |
+| Utilities | `src/utils/` (game logic, board geometry, formatting, territory scoring, storage, sound, analysis queue) |
 | Build and deployment | `vite.config.ts`, `worker/index.ts`, `.github/workflows/` |

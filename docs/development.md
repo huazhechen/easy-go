@@ -4,7 +4,6 @@
 
 - Node.js 24 or newer.
 - npm.
-- Chrome if you want to run the viewport smoke test.
 
 Install dependencies once:
 
@@ -38,8 +37,9 @@ The Vite dev server sends the COOP/COEP headers required for threaded WASM.
 
 | Path | Contents |
 | --- | --- |
-| `src/components/` | React UI: the battle board and its dialogs. |
-| `src/store/gameStore.ts` | Global game state and actions. |
+| `src/components/` | React UI: match card, board grid, actions, dialogs, and toasts. |
+| `src/hooks/` | UI orchestration hooks (model manager, hint modes, score judgment). |
+| `src/store/` | Global game state and actions (`gameStore.ts`) with settings, game-tree, and analysis helpers. |
 | `src/engine/katago/` | Browser KataGo parser, TensorFlow.js model, worker, search, and board logic. |
 | `src/utils/` | Game logic, board size, storage, sound, analysis queue, and locale helpers. |
 | `public/` | Static assets and model files. |
@@ -84,23 +84,11 @@ npm run lint
 npm run build
 ```
 
-The viewport test launches Chrome through the DevTools protocol. On macOS it
-defaults to `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`.
-Override with:
-
-```sh
-```
-
-Screenshots go to `/tmp/easy-go-viewport-check` unless
-`VIEWPORT_SCREENSHOT_DIR` is set.
-
 ## Local Storage During Development
 
 Browser state can affect manual testing. Useful storage locations:
 
 - Settings: versioned `easy-go:settings:*` localStorage keys.
-- Library: IndexedDB `easy-go-library`, with a localStorage fallback.
-- Uploaded model: IndexedDB `easy-go-models`.
 - Downloaded model cache (b18 and worker-fetched models): IndexedDB
   `easy-go-model-cache`. Keys include a version number; bumping
   `MODEL_CACHE_VERSION` in `src/engine/katago/modelCache.ts` invalidates it
@@ -108,9 +96,10 @@ Browser state can affect manual testing. Useful storage locations:
   MD5 (`tier.md5` in `src/engine/katago/modelDefaults.ts`); a mismatch is
   treated as missing and re-downloaded, so corruption or a stale copy is
   replaced even without a version bump.
-- Auto-save: easy-go localStorage keys managed by `src/utils/autoSave.ts`.
+- Model tier and per-tier thinking time: `easy-go:model-tier` and
+  `easy-go:model-thinking-ms` localStorage keys managed by
+  `src/hooks/useModelManager.ts`.
 
-Use the app UI when possible to clear analysis cache or uploaded model state.
 For stubborn manual-test state, clear site data in browser devtools.
 
 ## Common Troubleshooting
@@ -132,5 +121,5 @@ already configured.
 
 **Production app looks stale**
 
-The production service worker caches aggressively for offline use. Use the
-in-app update prompt when it appears, or clear site data during development.
+The app has no service worker. If the production build looks stale, hard-refresh
+or clear site data in browser devtools.

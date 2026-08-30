@@ -86,8 +86,15 @@ export const applyCapturesInPlace = (board: BoardState, x: number, y: number, pl
   return captured;
 };
 
+/**
+ * Simulates playing `player` at (x, y): clones the board, places the stone,
+ * and removes any captured opponent groups. The returned board always
+ * contains the played stone, so callers can use it directly as the position
+ * after the move.
+ */
 export const checkCaptures = (board: BoardState, x: number, y: number, player: Player): { captured: {x: number, y: number}[], newBoard: BoardState } => {
   const newBoard = board.map(row => [...row]);
+  newBoard[y]![x] = player;
   const captured = applyCapturesInPlace(newBoard, x, y, player);
   return { captured, newBoard };
 };
