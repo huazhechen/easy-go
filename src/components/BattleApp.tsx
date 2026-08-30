@@ -172,6 +172,7 @@ export function BattleApp() {
   const [scoreCache, setScoreCache] = useState<{ black: string; white: string; leader: string } | null>(null);
   const [humanColor, setHumanColor] = useState<'black' | 'white'>('black');
   const [thinkingMsByTier, setThinkingMsByTier] = useState<Record<KataGoModelTierId, number>>(readStoredThinkingMs);
+  const [draftThinkingMsByTier, setDraftThinkingMsByTier] = useState<Record<KataGoModelTierId, number>>(readStoredThinkingMs);
   const [selfPlayMode, setSelfPlayMode] = useState(false);
   const [draftSize, setDraftSize] = useState(9);
   const [draftHumanColor, setDraftHumanColor] = useState<'black' | 'white'>('black');
@@ -180,6 +181,10 @@ export function BattleApp() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [scanlineDone, setScanlineDone] = useState(false);
   const [selectedModelTier, setSelectedModelTier] = useState<KataGoModelTierId>(() => {
+    const stored = readLocalStorage(MODEL_TIER_STORAGE_KEY);
+    return isKnownModelTierId(stored) ? stored : DEFAULT_MODEL_TIER_ID;
+  });
+  const [draftModelTier, setDraftModelTier] = useState<KataGoModelTierId>(() => {
     const stored = readLocalStorage(MODEL_TIER_STORAGE_KEY);
     return isKnownModelTierId(stored) ? stored : DEFAULT_MODEL_TIER_ID;
   });
@@ -202,8 +207,6 @@ export function BattleApp() {
   const selectedModelTierConfig = getModelTier(selectedModelTier);
   const thinkingMs = thinkingMsByTier[selectedModelTier] ?? defaultThinkingForTier(selectedModelTierConfig);
   const selectedModelLabel = selectedModelTierConfig?.label ?? selectedModelTier;
-  const thinkingMinSec = Math.round((selectedModelTierConfig?.minThinkingMs ?? 2000) / 1000);
-  const thinkingMaxSec = Math.round((selectedModelTierConfig?.maxThinkingMs ?? 30000) / 1000);
 
   useEffect(() => {
     // Keep recommendations continuously improving independently of the
@@ -285,8 +288,10 @@ export function BattleApp() {
       if (!url) url = await resolveTierModelUrl(tier);
       const tierConfig = getModelTier(tier);
       setSelectedModelTier(tier);
+      setDraftModelTier(tier);
       const state = useGameStore.getState();
       const tierThinkingMs = readStoredThinkingMs()[tier] ?? defaultThinkingForTier(tierConfig);
+      setDraftThinkingMsByTier((prev) => ({ ...prev, [tier]: tierThinkingMs }));
       if (url && (state.settings.katagoModelUrl !== url || state.settings.katagoMaxTimeMs !== tierThinkingMs)) {
         const patch: Partial<GameSettings> = { katagoModelUrl: url };
         if (state.settings.katagoMaxTimeMs !== tierThinkingMs) patch.katagoMaxTimeMs = tierThinkingMs;
@@ -303,9 +308,21 @@ export function BattleApp() {
     []
   );
 
-  const newGame = (nextSize = draftSize, color = draftHumanColor) => {
+  const newGame = async (nextSize = draftSize, color = draftHumanColor) => {
     const engineSize = nextSize as BoardSize;
-    const thinkingMsValue = thinkingMsByTier[selectedModelTier] ?? defaultThinkingForTier(selectedModelTierConfig);
+    if (draftModelTier !== selectedModelTier) {
+      await switchModel(draftModelTier);
+      if (useGameStore.getState().settings.katagoModelUrl === settings.katagoModelUrl && draftModelTier === 'b18') return;
+    }
+    const draftTierConfig = getModelTier(draftModelTier);
+    const thinkingMsValue = draftThinkingMsByTier[draftModelTier] ?? defaultThinkingForTier(draftTierConfig);
+    setThinkingMsByTier((prev) => {
+      const next = { ...prev, [draftModelTier]: thinkingMsValue };
+      writeLocalStorage(THINKING_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+    setSelectedModelTier(draftModelTier);
+    writeLocalStorage(MODEL_TIER_STORAGE_KEY, draftModelTier);
     updateSettings({ katagoMaxTimeMs: thinkingMsValue, katagoBatchSize: 1 });
     startNewGame({ komi: 6.5, rules: 'japanese', boardSize: engineSize, handicap: 0 });
     setSize(nextSize);
@@ -399,13 +416,10 @@ export function BattleApp() {
   };
 
   const selectThinkingMs = (ms: number) => {
-    setThinkingMsByTier((prev) => {
-      const next = { ...prev, [selectedModelTier]: ms };
-      writeLocalStorage(THINKING_STORAGE_KEY, JSON.stringify(next));
+    setDraftThinkingMsByTier((prev) => {
+      const next = { ...prev, [draftModelTier]: ms };
       return next;
     });
-    const state = useGameStore.getState();
-    if (state.settings.katagoMaxTimeMs !== ms) state.updateSettings({ katagoMaxTimeMs: ms });
   };
 
   const startModelDownload = async () => {
@@ -561,7 +575,7 @@ export function BattleApp() {
         <div>
           <h1><LogoMark />EASY GO</h1>
         </div>
-        <div className="header-tools"><button type="button" className="new-game-header" onClick={() => { setDraftSize(size); setDraftHumanColor(humanColor); setDraftSelfPlayMode(selfPlayMode); setShowNewGame(true); }}><FaRedo />新对局</button></div>
+        <div className="header-tools"><button type="button" className="new-game-header" onClick={() => { setDraftSize(size); setDraftHumanColor(humanColor); setDraftSelfPlayMode(selfPlayMode); setDraftModelTier(selectedModelTier); setDraftThinkingMsByTier(thinkingMsByTier); setShowNewGame(true); }}><FaRedo />新对局</button></div>
       </header>
 
       <section className="match-card" style={{ '--match-split-num': displayWinRate } as CSSProperties}>
@@ -635,7 +649,7 @@ export function BattleApp() {
 
       <div className="battle-actions"><button type="button" onClick={undoTwoMoves} disabled={!moveHistory.length}><FaUndo />悔棋</button><button type="button" onClick={handlePass} disabled={!selfPlay && (opponentTurn || isAiThinking)}><FaFlag />{lastMoveWasPass ? '终局' : '停着'}</button><button type="button" onClick={() => void openScore()} disabled={!selfPlay && (opponentTurn || isAiThinking)} className={scoreCache && showTerritory ? 'score-toggle active' : 'score-toggle'}><FaCalculator />局势判定</button><button type="button" className={showHints ? 'recommendation-toggle active' : 'recommendation-toggle'} aria-pressed={showHints} onClick={toggleHintVisibility} disabled={!selfPlay && (opponentTurn || isAiThinking)}><FaLightbulb />推荐落点（{formatIterations(recommendationIterations)}）{isContinuousAnalysis && engineStatus === 'loading' && !(analysisData?.moves?.length) && <span className="thinking-spinner" aria-label="推荐落点计算中" />}</button></div>
       {showScore && <div className="dialog-backdrop"><section className="result-dialog"><strong>终局结果</strong><p>{blackPoints > whitePoints ? `黑胜 ${(blackPoints - whitePoints).toFixed(1)} 目` : `白胜 ${(whitePoints - blackPoints).toFixed(1)} 目`}</p><div className="score-legend"><span><i className="black" />黑 {blackPoints.toFixed(1)} 目</span><span><i className="white" />白 {whitePoints.toFixed(1)} 目</span></div><div><button onClick={() => setShowScore(false)}>返回</button><button className="dialog-start" onClick={() => { setShowScore(false); setShowNewGame(true); }}>新对局</button></div></section></div>}
-      {showNewGame && <div className="dialog-backdrop"><section className="new-game-dialog"><div className="dialog-title"><strong>新对局</strong><button onClick={() => setShowNewGame(false)} aria-label="关闭">×</button></div><label>棋盘<div className="dialog-options board-options">{SIZES.map((option) => <button key={option.size} className={draftSize === option.size ? 'selected' : ''} onClick={() => setDraftSize(option.size)}>{option.name}({option.size})</button>)}</div></label><label>执方<div className="dialog-options full-options player-options"><button className={draftHumanColor === 'black' && !draftSelfPlayMode ? 'selected' : ''} onClick={() => { setDraftHumanColor('black'); setDraftSelfPlayMode(false); }}><span className="dialog-stone black-stone" />执黑</button><button className={draftHumanColor === 'white' && !draftSelfPlayMode ? 'selected' : ''} onClick={() => { setDraftHumanColor('white'); setDraftSelfPlayMode(false); }}><span className="dialog-stone white-stone" />执白</button><button className={draftSelfPlayMode ? 'selected' : ''} onClick={() => setDraftSelfPlayMode(true)}><span className="dialog-stone black-stone" /><span className="dialog-stone white-stone" />自弈</button></div></label><label>模型<div className="dialog-options model-options">{KATAGO_MODEL_TIERS.map((tier) => <button key={tier.id} className={selectedModelTier === tier.id ? 'selected' : ''} onClick={() => void switchModel(tier.id)} title={`${tier.modelName} · 思考 ${tier.minThinkingMs / 1000}–${tier.maxThinkingMs / 1000} 秒`}>{tier.label} {formatThinkingSeconds(thinkingMsByTier[tier.id] ?? defaultThinkingForTier(tier))}</button>)}</div><input type="range" className="thinking-slider" min={thinkingMinSec} max={thinkingMaxSec} step={1} value={thinkingMs / 1000} disabled={draftSelfPlayMode} onChange={(event) => selectThinkingMs(Number(event.target.value) * 1000)} aria-label="每步思考时间（秒）" /></label><button className="dialog-start" onClick={() => newGame()}>开始对局</button></section></div>}
+      {showNewGame && <div className="dialog-backdrop"><section className="new-game-dialog"><div className="dialog-title"><strong>新对局</strong><button onClick={() => setShowNewGame(false)} aria-label="关闭">×</button></div><label>棋盘<div className="dialog-options board-options">{SIZES.map((option) => <button key={option.size} className={draftSize === option.size ? 'selected' : ''} onClick={() => setDraftSize(option.size)}>{option.name}({option.size})</button>)}</div></label><label>执方<div className="dialog-options full-options player-options"><button className={draftHumanColor === 'black' && !draftSelfPlayMode ? 'selected' : ''} onClick={() => { setDraftHumanColor('black'); setDraftSelfPlayMode(false); }}><span className="dialog-stone black-stone" />执黑</button><button className={draftHumanColor === 'white' && !draftSelfPlayMode ? 'selected' : ''} onClick={() => { setDraftHumanColor('white'); setDraftSelfPlayMode(false); }}><span className="dialog-stone white-stone" />执白</button><button className={draftSelfPlayMode ? 'selected' : ''} onClick={() => setDraftSelfPlayMode(true)}><span className="dialog-stone black-stone" /><span className="dialog-stone white-stone" />自弈</button></div></label><label>模型<div className="dialog-options model-options">{KATAGO_MODEL_TIERS.map((tier) => <button key={tier.id} className={draftModelTier === tier.id ? 'selected' : ''} onClick={() => setDraftModelTier(tier.id)} title={`${tier.modelName} · 思考 ${tier.minThinkingMs / 1000}–${tier.maxThinkingMs / 1000} 秒`}>{tier.label} {formatThinkingSeconds(draftThinkingMsByTier[tier.id] ?? defaultThinkingForTier(tier))}</button>)}</div><input type="range" className="thinking-slider" min={getModelTier(draftModelTier)?.minThinkingMs ? Math.round(getModelTier(draftModelTier)!.minThinkingMs / 1000) : 2} max={getModelTier(draftModelTier)?.maxThinkingMs ? Math.round(getModelTier(draftModelTier)!.maxThinkingMs / 1000) : 30} step={1} value={(draftThinkingMsByTier[draftModelTier] ?? defaultThinkingForTier(getModelTier(draftModelTier))) / 1000} disabled={draftSelfPlayMode} onChange={(event) => selectThinkingMs(Number(event.target.value) * 1000)} aria-label="每步思考时间（秒）" /></label><button className="dialog-start" onClick={() => void newGame()}>开始对局</button></section></div>}
       {showModelDownload && <div className="dialog-backdrop"><section className="new-game-dialog download-dialog"><div className="dialog-title"><strong>下载 B18 模型</strong><button onClick={cancelModelDownload} aria-label="关闭">×</button></div><p className="download-note">B18 是最强模型，下载完成后会保存在本地缓存，之后打开页面无需重复下载。</p>{downloadPhase === 'downloading' && <><div className="download-progress-track" role="progressbar" aria-label="模型下载进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={downloadPercent()}><span className="download-progress-fill" style={{ width: `${downloadPercent()}%` }} /></div><div className="download-progress-label">{formatModelBytes(downloadProgress.loaded)} / {downloadProgress.total > 0 ? formatModelBytes(downloadProgress.total) : '--'}（{downloadPercent()}%）</div><div className="download-dialog-actions"><button onClick={cancelModelDownload}>取消下载</button></div></>}{downloadPhase === 'confirm' && <div className="download-dialog-actions"><button onClick={cancelModelDownload}>取消</button><button className="dialog-start" onClick={() => void startModelDownload()}>开始下载</button></div>}{downloadPhase === 'done' && <><p className="download-done">下载完成，B18 模型已启用并写入本地缓存。</p>{downloadError && <p className="download-error">{downloadError}</p>}<div className="download-dialog-actions"><button className="dialog-start" onClick={() => setShowModelDownload(false)}>完成</button></div></>}{downloadPhase === 'error' && <><p className="download-error">{downloadError || '下载失败，请稍后重试。'}</p><div className="download-dialog-actions"><button onClick={cancelModelDownload}>取消</button><button className="dialog-start" onClick={() => void startModelDownload()}>重试</button></div></>}</section></div>}
       {showForceRedownload && <div className="dialog-backdrop"><section className="new-game-dialog download-dialog"><div className="dialog-title"><strong>重新下载 B18 模型</strong><button onClick={() => setShowForceRedownload(false)} aria-label="关闭">×</button></div><p className="download-note">B18 已下载并缓存。确认后将重新下载并用 MD5 校验替换现有缓存。</p><div className="download-dialog-actions"><button onClick={() => setShowForceRedownload(false)}>取消</button><button className="dialog-start" onClick={() => { setShowForceRedownload(false); setShowModelDownload(true); void startModelDownload(); }}>确认重新下载</button></div></section></div>}
       {notice && <div className="battle-toast">{notice}</div>}

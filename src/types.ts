@@ -186,7 +186,6 @@ export interface GameSettings {
   katagoModelUrl: string;
   katagoBackend: KataGoBackendPreference;
   katagoVisits: number;
-  katagoFastVisits: number; // KaTrain fast_visits (used for initial/quick analysis)
   katagoMaxTimeMs: number;
   katagoBatchSize: number;
   katagoMaxChildren: number;
