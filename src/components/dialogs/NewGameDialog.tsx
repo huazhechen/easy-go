@@ -109,7 +109,6 @@ export function NewGameDialog({
             </button>
           ))}
         </div>
-        {draftSelfPlay && <small className="selfplay-model-note">自弈固定使用 B10 模型</small>}
         <input
           type="range"
           className="thinking-slider"
