@@ -59,7 +59,7 @@ describe('Game Logic', () => {
 
   it('ignores invalid store play coordinates instead of throwing', () => {
     const store = useGameStore.getState();
-    store.resetGame();
+    store.startNewGame({ komi: 6.5, rules: 'japanese', boardSize: 19, handicap: 0 });
 
     expect(() => store.playMove(-1, 3)).not.toThrow();
     expect(() => store.playMove(3, -1)).not.toThrow();

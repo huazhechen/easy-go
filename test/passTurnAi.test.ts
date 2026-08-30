@@ -4,12 +4,12 @@ import { useGameStore } from '../src/store/gameStore';
 describe('GameStore passTurn AI behavior', () => {
   afterEach(() => {
     vi.useRealTimers();
-    useGameStore.getState().resetGame();
+    useGameStore.getState().startNewGame({ komi: 6.5, rules: 'japanese', boardSize: 19, handicap: 0 });
   });
 
   it('creates and reuses a pass child from the current position', () => {
     const store = useGameStore.getState();
-    store.resetGame();
+    store.startNewGame({ komi: 6.5, rules: 'japanese', boardSize: 19, handicap: 0 });
 
     const initialTreeVersion = useGameStore.getState().treeVersion;
     store.passTurn();
@@ -32,7 +32,7 @@ describe('GameStore passTurn AI behavior', () => {
     vi.useFakeTimers();
 
     const store = useGameStore.getState();
-    store.resetGame();
+    store.startNewGame({ komi: 6.5, rules: 'japanese', boardSize: 19, handicap: 0 });
 
     const originalMakeAiMove = store.makeAiMove;
     const makeAiMoveSpy = vi.fn();
@@ -56,7 +56,7 @@ describe('GameStore passTurn AI behavior', () => {
     vi.useFakeTimers();
 
     const store = useGameStore.getState();
-    store.resetGame();
+    store.startNewGame({ komi: 6.5, rules: 'japanese', boardSize: 19, handicap: 0 });
 
     const originalMakeAiMove = store.makeAiMove;
     const makeAiMoveSpy = vi.fn();

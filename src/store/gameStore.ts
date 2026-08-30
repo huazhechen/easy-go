@@ -1,9 +1,8 @@
 import { createWithEqualityFn as create } from 'zustand/traditional';
-import { DEFAULT_BOARD_SIZE, type GameRules, type GameState, type BoardState, type Player, type AnalysisResult, type BoardDrawing, type GameNode, type Move, type GameSettings, type CandidateMove, type RegionOfInterest, type BoardSize, type KataGoBackendPreference, type EditTool } from '../types';
-import { findMistakeNavigationTarget } from '../utils/mistakeNavigation';
+import { DEFAULT_BOARD_SIZE, type GameRules, type GameState, type BoardState, type Player, type AnalysisResult, type GameNode, type Move, type GameSettings, type BoardSize, type KataGoBackendPreference } from '../types';
 import { applyCapturesInPlace, boardsEqual, getLiberties, isValidMove } from '../utils/gameLogic';
 import { playStoneSound, playCaptureSound, playPassSound, playNewGameSound } from '../utils/sound';
-import { coordinateToSgf, expandSgfPointList, extractKaTrainUserNoteFromSgfComment, formatSgfDate, type ParsedSgf } from '../utils/sgf';
+import { coordinateToSgf, formatSgfDate } from '../utils/sgf';
 import { getKataGoEngineClient, isKataGoCanceledError } from '../engine/katago/client';
 import type { KataGoAnalysisPayload } from '../engine/katago/types';
 import { ENGINE_MAX_TIME_MS, ENGINE_MAX_VISITS } from '../engine/katago/limits';
@@ -12,8 +11,6 @@ import {
   KATAGO_RECOMMENDED_MODEL_URL,
   KATAGO_SMALL_MODEL_PATH,
 } from '../engine/katago/modelDefaults';
-import { decodeKaTrainKt, kaTrainAnalysisToAnalysisResult } from '../utils/katrainSgfAnalysis';
-import { decodeKayaKa } from '../utils/kayaSgfAnalysis';
 import { publicUrl } from '../utils/publicUrl';
 import { getPreferredAppLocaleId, isAppLocaleId } from '../utils/locales';
 import { createEmptyBoard, getHandicapPoints, getMaxHandicap, normalizeBoardSize } from '../utils/boardSize';
@@ -23,38 +20,10 @@ import {
   isAnalysisQueueCanceledError,
   isAnalysisQueueStaleError,
 } from '../utils/analysisQueue';
-import {
-  findBranchTargetByIndex,
-  findCurrentLineMoveTarget,
-  findSiblingBranchTarget,
-  getActiveChild,
-  rememberActiveBranchPath,
-  type ActiveBranchMap,
-} from '../utils/branchNavigation';
+import { rememberActiveBranchPath, type ActiveBranchMap } from '../utils/branchNavigation';
 import { komiWithHandicapBonus } from '../utils/handicap';
-import { getResignResult } from '../utils/resign';
-import {
-  admitNotification,
-  autoDismissDelay,
-  dismissNotification,
-  emptyNotificationQueue,
-} from '../utils/notificationQueue';
 import { readLocalStorage, writeLocalStorage } from '../utils/storage';
 import { getAnimationNow } from '../utils/animationFrame';
-
-type BranchClipboardNode = {
-  move: Move | null;
-  properties: Record<string, string[]>;
-  endState: string | null;
-  timeUsedSeconds: number;
-  note: string;
-  aiThoughts: string;
-  children: BranchClipboardNode[];
-};
-
-type ApplyEditToolOptions = {
-  paintOnly?: boolean;
-};
 
 interface GameStore extends GameState {
   // Tree State
@@ -64,81 +33,29 @@ interface GameStore extends GameState {
   activeBranchChildIds: ActiveBranchMap;
 
   // Settings & Modes
-  boardRotation: 0 | 1 | 2 | 3; // 0,90,180,270 degrees clockwise (KaTrain rotate)
-  regionOfInterest: RegionOfInterest | null;
-  isSelectingRegionOfInterest: boolean;
-  isInsertMode: boolean;
-  insertAfterNodeId: string | null; // Main-branch continuation to copy after insert.
-  insertAnchorNodeId: string | null; // Where insert mode started.
-  isEditMode: boolean;
-  editTool: EditTool;
-  copiedBranch: BranchClipboardNode | null;
-  editUndoCount: number;
-  editRedoCount: number;
   isAiPlaying: boolean;
   aiColor: Player | null;
   isAnalysisMode: boolean;
   isContinuousAnalysis: boolean;
-  isTeachMode: boolean;
-  /**
-   * `undoable` is set by the edit actions that push onto the edit history, so
-   * the toast can offer to take the change straight back — these fire from a
-   * single click on the board and are easy to trigger by accident.
-   */
-  notification: { message: string, type: 'info' | 'error' | 'success', copyText?: string, undoable?: boolean } | null;
   analysisData: AnalysisResult | null;
-  analysisCacheSize: number;
   settings: GameSettings;
   engineStatus: 'idle' | 'loading' | 'ready' | 'error';
   engineError: string | null;
   engineBackend: string | null;
-  engineModelName: string | null;
   /** True while an AI move request is in flight, so the UI can say so. */
   isAiThinking: boolean;
-
-  // Timer (KaTrain-like)
-  timerPaused: boolean;
-  timerMainTimeUsedSeconds: number; // Shared main time used (KaTrain semantics)
-  timerPeriodsUsed: { black: number; white: number }; // Byo-yomi periods used per player
 
   // Actions
   toggleAi: (color: Player) => void;
   setAiPlayer: (color: Player | null, enabled?: boolean) => void;
   toggleAnalysisMode: () => void;
   toggleContinuousAnalysis: (quiet?: boolean) => void;
-  stopAnalysis: () => void;
-  clearAnalysisCache: () => void;
-  toggleTeachMode: () => void;
-  clearNotification: () => void;
-  toggleTimerPaused: () => void;
   playMove: (x: number, y: number, isLoad?: boolean) => void;
   makeAiMove: (opts?: { force?: boolean }) => void;
   undoMove: () => void; // Go back
   navigateBack: () => void;
-  navigateForward: () => void; // Go forward (main branch)
-  navigateToMove: (moveNumber: number) => void;
-  navigateStart: () => void;
-  navigateEnd: () => void;
-  switchBranch: (direction: 1 | -1) => void;
-  switchToBranchIndex: (index: number) => void;
-  undoToBranchPoint: () => void;
-  undoToMainBranch: () => void;
-  makeCurrentNodeMainBranch: () => void;
-  shiftCurrentVariation: (direction: 'left' | 'right') => void;
-  findMistake: (direction: 'undo' | 'redo') => void;
-  deleteCurrentNode: () => void;
-  pruneCurrentBranch: () => void;
-  undoEdit: () => void;
-  redoEdit: () => void;
-  copyCurrentBranch: () => void;
-  pasteCopiedBranch: () => void;
   jumpToNode: (node: GameNode) => void; // Navigate to arbitrary node
-  navigateNextMistake: () => void;
-  navigatePrevMistake: () => void;
-  resetGame: () => void;
-  loadGame: (sgf: ParsedSgf) => void;
   passTurn: () => void;
-  resign: (player?: Player) => void;
   runAnalysis: (opts?: {
     force?: boolean;
     visits?: number;
@@ -158,31 +75,9 @@ interface GameStore extends GameState {
     /** Moves the search may not play at the root (KataGo avoidMoves). */
     avoidMoves?: Array<{ x: number; y: number }>;
   }) => Promise<void>;
-  resetCurrentAnalysis: () => void;
-  startSelectRegionOfInterest: () => void;
-  cancelSelectRegionOfInterest: () => void;
-  setRegionOfInterest: (roi: RegionOfInterest | null) => void;
-  toggleInsertMode: () => void;
-  toggleEditMode: () => void;
-  setEditTool: (tool: EditTool) => void;
-  applyEditTool: (x: number, y: number, options?: ApplyEditToolOptions) => void;
-  toggleBoardPointMarkup: (x: number, y: number) => void;
-  clearCurrentNodeSetupStones: () => void;
-  applySetupStones: (stones: Array<{ x: number; y: number; player: Player | null }>) => number;
-  clearCurrentNodeAnnotations: () => void;
-  addSegmentMarkup: (prop: SegmentProperty, sx: number, sy: number, ex: number, ey: number) => void;
-  addNodeDrawing: (drawing: BoardDrawing) => void;
-  clearNodeDrawings: () => void;
   updateSettings: (newSettings: Partial<GameSettings>) => void;
-  setKomi: (komi: number) => void;
-  setHandicap: (handicap: number) => void;
-  setRootProperty: (key: string, value: string) => void;
-  setCurrentNodeNote: (note: string) => void;
-  rotateBoard: () => void;
   startNewGame: (opts: { komi: number; rules: GameRules; boardSize: BoardSize; handicap: number }) => void;
 }
-
-type StoreNotification = NonNullable<GameStore['notification']>;
 
 const createEmptyTerritory = (boardSize: number): number[][] =>
   Array.from({ length: boardSize }, () => Array.from({ length: boardSize }, () => 0));
@@ -323,16 +218,6 @@ const rulesToSgfRu = (rules: GameRules): string => {
   }
 };
 
-const parseSgfRu = (ru: string | undefined): GameRules | null => {
-  if (!ru) return null;
-  const v = ru.trim().toLowerCase();
-  if (!v) return null;
-  if (v === 'jp' || v.includes('japanese')) return 'japanese';
-  if (v === 'ko' || v.includes('korean')) return 'korean';
-  if (v === 'cn' || v.includes('chinese')) return 'chinese';
-  return null;
-};
-
 const ownershipToTerritoryGrid = (ownership: ArrayLike<number>, boardSize: number): number[][] => {
   const territory: number[][] = Array(boardSize)
     .fill(0)
@@ -348,86 +233,6 @@ const ownershipToTerritoryGrid = (ownership: ArrayLike<number>, boardSize: numbe
 
 const isPassMove = (m: Move | null | undefined): boolean => !!m && (m.x < 0 || m.y < 0);
 
-const moveKey = (m: Move): string => `${m.player}:${m.x},${m.y}`;
-
-const collectNodesInTree = (root: GameNode): GameNode[] => {
-  const out: GameNode[] = [];
-  const stack: GameNode[] = [root];
-  while (stack.length > 0) {
-    const n = stack.pop()!;
-    out.push(n);
-    for (let i = n.children.length - 1; i >= 0; i--) stack.push(n.children[i]!);
-  }
-  return out;
-};
-
-const nodeMoveIndex = (node: GameNode): number => node.gameState.moveHistory.length - 1;
-
-const nodeIsInMoveRange = (node: GameNode, moveRange: [number, number] | null): boolean => {
-  if (!moveRange) return true;
-  const moveIndex = nodeMoveIndex(node);
-  return moveIndex >= moveRange[0] && moveIndex <= moveRange[1];
-};
-
-const nodeIsParentOfMoveInRange = (node: GameNode, moveRange: [number, number] | null): boolean => {
-  if (!moveRange) return false;
-  return node.children.some((child) => nodeIsInMoveRange(child, moveRange));
-};
-
-const computePointsLostForNode = (node: GameNode): number | null => {
-  const move = node.move;
-  const parent = node.parent;
-  if (!move || !parent) return null;
-
-  const parentScore = parent.analysis?.rootScoreLead;
-  const childScore = node.analysis?.rootScoreLead;
-  if (typeof parentScore === 'number' && typeof childScore === 'number') {
-    const sign = move.player === 'black' ? 1 : -1;
-    return sign * (parentScore - childScore);
-  }
-  return null;
-};
-
-const nodeHasMistakeContext = (node: GameNode, mistakesThreshold: number): boolean => {
-  let maxLoss = Math.max(0, computePointsLostForNode(node) ?? 0);
-  for (const child of node.children) {
-    maxLoss = Math.max(maxLoss, Math.max(0, computePointsLostForNode(child) ?? 0));
-  }
-  return maxLoss > mistakesThreshold;
-};
-
-export const selectFullGameAnalysisNodes = (args: {
-  rootNode: GameNode;
-  moveRange: [number, number] | null;
-  mistakesOnly: boolean;
-  mistakesThreshold: number;
-}): GameNode[] => {
-  return collectNodesInTree(args.rootNode).filter((node) => {
-    if (args.moveRange && !nodeIsInMoveRange(node, args.moveRange) && !nodeIsParentOfMoveInRange(node, args.moveRange)) {
-      return false;
-    }
-    if (args.mistakesOnly && !nodeHasMistakeContext(node, args.mistakesThreshold)) return false;
-    return true;
-  });
-};
-
-const normalizeRegionOfInterest = (roi: RegionOfInterest | null, boardSize: number): RegionOfInterest | null => {
-  if (!roi) return null;
-  const xMin = Math.max(0, Math.min(boardSize - 1, Math.min(roi.xMin, roi.xMax)));
-  const xMax = Math.max(0, Math.min(boardSize - 1, Math.max(roi.xMin, roi.xMax)));
-  const yMin = Math.max(0, Math.min(boardSize - 1, Math.min(roi.yMin, roi.yMax)));
-  const yMax = Math.max(0, Math.min(boardSize - 1, Math.max(roi.yMin, roi.yMax)));
-  const isSinglePoint = xMin === xMax && yMin === yMax;
-  const isWholeBoard = xMin === 0 && yMin === 0 && xMax === boardSize - 1 && yMax === boardSize - 1;
-  if (isSinglePoint || isWholeBoard) return null; // KaTrain semantics.
-  return { xMin, xMax, yMin, yMax };
-};
-
-const isMoveInRegion = (m: CandidateMove, roi: RegionOfInterest): boolean => {
-  if (m.x < 0 || m.y < 0) return true; // Pass always allowed.
-  return m.x >= roi.xMin && m.x <= roi.xMax && m.y >= roi.yMin && m.y <= roi.yMax;
-};
-
 const createNode = (
     parent: GameNode | null,
     move: Move | null,
@@ -440,14 +245,8 @@ const createNode = (
         children: [],
         move,
         gameState,
-        endState: null,
-        timeUsedSeconds: 0,
         analysis: null,
         analysisVisitsRequested: 0,
-        autoUndo: null,
-        undoThreshold: Math.random(),
-        aiThoughts: '',
-        note: '',
         properties: {}
     };
 };
@@ -465,327 +264,6 @@ const nodeAnalysisVisitCount = (node: GameNode): number => {
   if (typeof rootVisits === 'number' && Number.isFinite(rootVisits)) return Math.max(0, Math.floor(rootVisits));
   const requested = node.analysisVisitsRequested ?? 0;
   return Number.isFinite(requested) ? Math.max(0, Math.floor(requested)) : 0;
-};
-
-const findNodeById = (root: GameNode, id: string): GameNode | null => {
-  if (root.id === id) return root;
-  const stack: GameNode[] = [...root.children];
-  while (stack.length > 0) {
-    const n = stack.pop()!;
-    if (n.id === id) return n;
-    for (let i = 0; i < n.children.length; i++) stack.push(n.children[i]!);
-  }
-  return null;
-};
-
-const MARKER_PROPERTIES = ['TR', 'SQ', 'CR', 'MA'] as const;
-type MarkerProperty = (typeof MARKER_PROPERTIES)[number];
-// Two-point segment markup: SGF AR (arrows) and LN (lines). Stored as
-// 'startCoord:endCoord' and deliberately kept out of the point-list expansion.
-const SEGMENT_PROPERTIES = ['AR', 'LN'] as const;
-export type SegmentProperty = (typeof SEGMENT_PROPERTIES)[number];
-const SETUP_PROPERTIES = ['AB', 'AW', 'AE'] as const;
-
-const editToolToMarkerProperty = (tool: EditTool): MarkerProperty | null => {
-  switch (tool) {
-    case 'marker-triangle':
-      return 'TR';
-    case 'marker-square':
-      return 'SQ';
-    case 'marker-circle':
-      return 'CR';
-    case 'marker-cross':
-      return 'MA';
-    default:
-      return null;
-  }
-};
-
-const cloneBoard = (board: BoardState): BoardState => board.map((row) => [...row]);
-
-const ensureNodeProperties = (node: GameNode): Record<string, string[]> => {
-  node.properties = node.properties ?? {};
-  return node.properties;
-};
-
-const cloneNodeProperties = (props: Record<string, string[]> | undefined): Record<string, string[]> => {
-  const out: Record<string, string[]> = {};
-  if (!props) return out;
-  for (const [key, values] of Object.entries(props)) out[key] = [...values];
-  return out;
-};
-
-const copyBranchSnapshot = (node: GameNode): BranchClipboardNode => ({
-  move: node.move ? { ...node.move } : null,
-  properties: cloneNodeProperties(node.properties),
-  endState: node.endState ?? null,
-  timeUsedSeconds: node.timeUsedSeconds ?? 0,
-  note: node.note ?? '',
-  aiThoughts: node.aiThoughts ?? '',
-  children: node.children.map(copyBranchSnapshot),
-});
-
-const countClipboardNodes = (node: BranchClipboardNode): number =>
-  1 + node.children.reduce((total, child) => total + countClipboardNodes(child), 0);
-
-const removeValue = (props: Record<string, string[]>, key: string, shouldRemove: (value: string) => boolean): void => {
-  const values = props[key];
-  if (!values) return;
-  const next = values.filter((value) => !shouldRemove(value));
-  if (next.length > 0) props[key] = next;
-  else delete props[key];
-};
-
-const removeSetupCoord = (props: Record<string, string[]>, coord: string): void => {
-  for (const key of SETUP_PROPERTIES) removeValue(props, key, (value) => value === coord);
-};
-
-const removeSetupProperties = (props: Record<string, string[]>): number => {
-  let removed = 0;
-  for (const key of SETUP_PROPERTIES) {
-    removed += props[key]?.length ?? 0;
-    delete props[key];
-  }
-  return removed;
-};
-
-const removeMarkupCoord = (props: Record<string, string[]>, coord: string): void => {
-  for (const key of MARKER_PROPERTIES) removeValue(props, key, (value) => value === coord);
-  removeValue(props, 'LB', (value) => value.split(':', 1)[0] === coord);
-};
-
-const hasMarkupCoord = (props: Record<string, string[]>, coord: string): boolean =>
-  MARKER_PROPERTIES.some((key) => props[key]?.includes(coord)) ||
-  (props.LB ?? []).some((value) => value.split(':', 1)[0] === coord);
-
-const hasSetupCoord = (props: Record<string, string[]>, coord: string): boolean =>
-  SETUP_PROPERTIES.some((key) => props[key]?.includes(coord));
-
-const addUniqueValue = (props: Record<string, string[]>, key: string, value: string): void => {
-  const values = props[key] ?? [];
-  if (!values.includes(value)) props[key] = [...values, value];
-};
-
-const nextAlternateSetupStone = (props: Record<string, string[]>, currentStone: Player | null): Player | null => {
-  if (currentStone === 'black') return 'white';
-  if (currentStone === 'white') return null;
-  const blackCount = props.AB?.length ?? 0;
-  const whiteCount = props.AW?.length ?? 0;
-  return blackCount <= whiteCount ? 'black' : 'white';
-};
-
-const nextAlphaLabel = (props: Record<string, string[]>): string => {
-  let max = -1;
-  for (const value of props.LB ?? []) {
-    const label = value.slice(value.indexOf(':') + 1).trim().toUpperCase();
-    if (/^[A-Z]+$/.test(label)) {
-      let n = 0;
-      for (const ch of label) n = n * 26 + (ch.charCodeAt(0) - 64);
-      max = Math.max(max, n - 1);
-    }
-  }
-  let n = max + 1;
-  let label = '';
-  do {
-    label = String.fromCharCode(65 + (n % 26)) + label;
-    n = Math.floor(n / 26) - 1;
-  } while (n >= 0);
-  return label;
-};
-
-const nextNumberLabel = (props: Record<string, string[]>): string => {
-  let max = 0;
-  for (const value of props.LB ?? []) {
-    const label = value.slice(value.indexOf(':') + 1).trim();
-    if (/^\d+$/.test(label)) max = Math.max(max, Number.parseInt(label, 10));
-  }
-  return String(max + 1);
-};
-
-const applySetupPropsToBoard = (
-  board: BoardState,
-  props: Record<string, string[]> | undefined,
-  boardSize = board.length
-): BoardState => {
-  if (!props?.AB?.length && !props?.AW?.length && !props?.AE?.length) return board;
-  const next = cloneBoard(board);
-  const place = (player: Player, coords: string[] | undefined) => {
-    for (const coord of coords ?? []) {
-      for (const { x, y } of expandSgfPointList(coord, boardSize)) {
-        next[y]![x] = player;
-      }
-    }
-  };
-  place('black', props.AB);
-  place('white', props.AW);
-  for (const coord of props.AE ?? []) {
-    for (const { x, y } of expandSgfPointList(coord, boardSize)) {
-      next[y]![x] = null;
-    }
-  }
-  return next;
-};
-
-const applySetupPropsToNode = (node: GameNode, props: Record<string, string[]> | undefined, boardSize?: number): void => {
-  const nextBoard = applySetupPropsToBoard(node.gameState.board, props, boardSize ?? node.gameState.board.length);
-  if (nextBoard !== node.gameState.board) {
-    node.gameState = { ...node.gameState, board: nextBoard };
-  }
-};
-
-const playerFromSgfPlayerToMove = (props: Record<string, string[]> | undefined): Player | null => {
-  const value = props?.PL?.[0]?.toUpperCase();
-  if (value === 'B') return 'black';
-  if (value === 'W') return 'white';
-  return null;
-};
-
-const applySgfPlayerToMoveToNode = (node: GameNode, props: Record<string, string[]> | undefined): void => {
-  const player = playerFromSgfPlayerToMove(props);
-  if (player) node.gameState = { ...node.gameState, currentPlayer: player };
-};
-
-const countNodes = (node: GameNode): number => {
-  let count = 0;
-  const stack = [node];
-  while (stack.length > 0) {
-    const n = stack.pop()!;
-    count++;
-    for (const child of n.children) stack.push(child);
-  }
-  return count;
-};
-
-const clearAnalysisInSubtree = (node: GameNode): void => {
-  const stack = [node];
-  while (stack.length > 0) {
-    const n = stack.pop()!;
-    n.analysis = null;
-    n.analysisVisitsRequested = 0;
-    for (const child of n.children) stack.push(child);
-  }
-};
-
-const countAnalyzedNodes = (node: GameNode): number => {
-  let count = 0;
-  const stack = [node];
-  while (stack.length > 0) {
-    const n = stack.pop()!;
-    if (n.analysis) count++;
-    for (const child of n.children) stack.push(child);
-  }
-  return count;
-};
-
-const getAnalysisCacheSize = (rootNode: GameNode): number =>
-  Math.max(countAnalyzedNodes(rootNode), analysisQueue.getCacheSize());
-
-type EditHistoryEntry = {
-  rootNode: GameNode;
-  currentNodeId: string;
-  activeBranchChildIds: ActiveBranchMap;
-};
-
-const EDIT_HISTORY_LIMIT = 50;
-let editUndoStack: EditHistoryEntry[] = [];
-let editRedoStack: EditHistoryEntry[] = [];
-
-const cloneMove = (move: Move | null): Move | null => (move ? { ...move } : null);
-
-const cloneGameState = (gameState: GameState): GameState => ({
-  board: cloneBoard(gameState.board),
-  currentPlayer: gameState.currentPlayer,
-  moveHistory: gameState.moveHistory.map((move) => ({ ...move })),
-  capturedBlack: gameState.capturedBlack,
-  capturedWhite: gameState.capturedWhite,
-  komi: gameState.komi,
-});
-
-const cloneGameNodeTree = (node: GameNode, parent: GameNode | null = null): GameNode => {
-  const copy = createNode(parent, cloneMove(node.move), cloneGameState(node.gameState), node.id);
-  copy.endState = node.endState;
-  copy.timeUsedSeconds = node.timeUsedSeconds;
-  copy.analysis = node.analysis;
-  copy.analysisVisitsRequested = node.analysisVisitsRequested;
-  copy.autoUndo = node.autoUndo;
-  copy.undoThreshold = node.undoThreshold;
-  copy.aiThoughts = node.aiThoughts;
-  copy.note = node.note;
-  copy.properties = cloneNodeProperties(node.properties);
-  copy.children = node.children.map((child) => cloneGameNodeTree(child, copy));
-  return copy;
-};
-
-const editHistoryCounts = () => ({
-  editUndoCount: editUndoStack.length,
-  editRedoCount: editRedoStack.length,
-});
-
-const clearEditHistory = () => {
-  editUndoStack = [];
-  editRedoStack = [];
-  return editHistoryCounts();
-};
-
-const captureEditHistory = (state: GameStore): EditHistoryEntry => ({
-  rootNode: cloneGameNodeTree(state.rootNode),
-  currentNodeId: state.currentNode.id,
-  activeBranchChildIds: { ...state.activeBranchChildIds },
-});
-
-const pushEditHistory = (state: GameStore) => {
-  editUndoStack.push(captureEditHistory(state));
-  if (editUndoStack.length > EDIT_HISTORY_LIMIT) editUndoStack.shift();
-  editRedoStack = [];
-  return editHistoryCounts();
-};
-
-const restoreEditHistory = (entry: EditHistoryEntry, state: GameStore) => {
-  const currentNode = findNodeById(entry.rootNode, entry.currentNodeId) ?? entry.rootNode;
-  return {
-    rootNode: entry.rootNode,
-    currentNode,
-    activeBranchChildIds: { ...entry.activeBranchChildIds },
-    board: currentNode.gameState.board,
-    currentPlayer: currentNode.gameState.currentPlayer,
-    moveHistory: currentNode.gameState.moveHistory,
-    capturedBlack: currentNode.gameState.capturedBlack,
-    capturedWhite: currentNode.gameState.capturedWhite,
-    komi: currentNode.gameState.komi,
-    analysisData: currentNode.analysis || null,
-    analysisCacheSize: getAnalysisCacheSize(entry.rootNode),
-    treeVersion: state.treeVersion + 1,
-  };
-};
-
-const applyKomiToSubtree = (node: GameNode, komi: number): void => {
-  const stack = [node];
-  while (stack.length > 0) {
-    const n = stack.pop()!;
-    n.gameState = { ...n.gameState, komi };
-    for (const child of n.children) stack.push(child);
-  }
-};
-
-const formatKomiProperty = (komi: number): string =>
-  Number.isInteger(komi) ? String(komi) : String(Number(komi.toFixed(2)));
-
-const parseHandicapProperty = (props: Record<string, string[]> | undefined, boardSize: BoardSize): number => {
-  const raw = props?.HA?.[0];
-  const parsed = raw ? Number.parseInt(raw, 10) : 0;
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, Math.min(parsed, getMaxHandicap(boardSize)));
-};
-
-const applyRootHandicap = (board: BoardState, boardSize: BoardSize, oldHandicap: number, nextHandicap: number): BoardState => {
-  const next = cloneBoard(board);
-  for (const [x, y] of getHandicapPoints(boardSize, oldHandicap)) {
-    if (next[y]?.[x] === 'black') next[y]![x] = null;
-  }
-  for (const [x, y] of getHandicapPoints(boardSize, nextHandicap)) {
-    next[y]![x] = 'black';
-  }
-  return next;
 };
 
 const rootSetupPropertiesFromBoard = (
@@ -834,111 +312,6 @@ const syncRootSetupPropertiesFromBoard = (
   if (setup.AW) props.AW = setup.AW;
 };
 
-const rootSetupPropertiesMatchBoard = (
-  props: Record<string, string[]> | undefined,
-  board: BoardState,
-  boardSize: BoardSize,
-  handicap: number
-): boolean => {
-  const setup = rootSetupPropertiesFromBoard(board, boardSize, handicap);
-  return JSON.stringify({
-    AB: props?.AB ?? [],
-    AW: props?.AW ?? [],
-    AE: props?.AE ?? [],
-  }) === JSON.stringify({
-    AB: setup.AB ?? [],
-    AW: setup.AW ?? [],
-    AE: [],
-  });
-};
-
-const replayChildMove = (parent: GameNode, child: GameNode): GameState | null => {
-  const move = child.move;
-  const parentState = parent.gameState;
-  if (!move) {
-    const nextState = cloneGameState(parentState);
-    return {
-      ...nextState,
-      board: applySetupPropsToBoard(nextState.board, child.properties),
-      currentPlayer: playerFromSgfPlayerToMove(child.properties) ?? parentState.currentPlayer,
-    };
-  }
-  const nextPlayer: Player = move.player === 'black' ? 'white' : 'black';
-
-  if (move.x < 0 || move.y < 0) {
-    const passMove: Move = { x: -1, y: -1, player: move.player };
-    return {
-      board: cloneBoard(parentState.board),
-      currentPlayer: playerFromSgfPlayerToMove(child.properties) ?? nextPlayer,
-      moveHistory: [...parentState.moveHistory, passMove],
-      capturedBlack: parentState.capturedBlack,
-      capturedWhite: parentState.capturedWhite,
-      komi: parentState.komi,
-    };
-  }
-
-  if (parentState.board[move.y]?.[move.x] !== null) return null;
-
-  const tentativeBoard = cloneBoard(parentState.board);
-  tentativeBoard[move.y]![move.x] = move.player;
-  const captured = applyCapturesInPlace(tentativeBoard, move.x, move.y, move.player);
-  if (captured.length === 0) {
-    const { liberties } = getLiberties(tentativeBoard, move.x, move.y);
-    if (liberties === 0) return null;
-  }
-
-  if (parent.parent && boardsEqual(tentativeBoard, parent.parent.gameState.board)) return null;
-
-  const newCapturedBlack = parentState.capturedBlack + (move.player === 'white' ? captured.length : 0);
-  const newCapturedWhite = parentState.capturedWhite + (move.player === 'black' ? captured.length : 0);
-  return {
-    board: applySetupPropsToBoard(tentativeBoard, child.properties),
-    currentPlayer: playerFromSgfPlayerToMove(child.properties) ?? nextPlayer,
-    moveHistory: [...parentState.moveHistory, { x: move.x, y: move.y, player: move.player }],
-    capturedBlack: newCapturedBlack,
-    capturedWhite: newCapturedWhite,
-    komi: parentState.komi,
-  };
-};
-
-const pasteBranchSnapshot = (parent: GameNode, source: BranchClipboardNode): GameNode | null => {
-  const node = createNode(parent, cloneMove(source.move), cloneGameState(parent.gameState));
-  node.properties = cloneNodeProperties(source.properties);
-  node.endState = source.endState;
-  node.timeUsedSeconds = source.timeUsedSeconds;
-  node.note = source.note;
-  node.aiThoughts = source.aiThoughts;
-
-  const rebuiltState = replayChildMove(parent, node);
-  if (!rebuiltState) return null;
-  node.gameState = rebuiltState;
-
-  for (const child of source.children) {
-    const pastedChild = pasteBranchSnapshot(node, child);
-    if (pastedChild) node.children.push(pastedChild);
-  }
-  return node;
-};
-
-const rebuildDescendants = (node: GameNode): number => {
-  let pruned = 0;
-  const kept: GameNode[] = [];
-  for (const child of node.children) {
-    const rebuiltState = replayChildMove(node, child);
-    if (!rebuiltState) {
-      pruned += countNodes(child);
-      continue;
-    }
-    child.gameState = rebuiltState;
-    child.analysis = null;
-    child.analysisVisitsRequested = 0;
-    pruned += rebuildDescendants(child);
-    kept.push(child);
-  }
-  node.children = kept;
-  return pruned;
-};
-
 // Initial state helpers
 const initialBoard = createEmptyBoard(DEFAULT_BOARD_SIZE);
 const initialGameState: GameState = {
@@ -957,10 +330,7 @@ const defaultSettings: GameSettings = {
   soundEnabled: true,
   defaultBoardSize: DEFAULT_BOARD_SIZE,
   defaultHandicap: 0,
-  mistakeThreshold: 3.0,
-  loadSgfRewind: true,
   gameRules: 'japanese',
-  trainerEvalThresholds: [12, 6, 3, 1.5, 0.5, 0],
   analysisShowChildren: true,
   analysisShowEval: true,
   analysisShowHints: true,
@@ -983,7 +353,6 @@ const defaultSettings: GameSettings = {
   katagoAnalysisPvLen: 15,
   katagoNnRandomize: true,
   katagoConservativePass: true,
-  teachNumUndoPrompts: [1, 1, 1, 0.5, 0, 0],
 };
 
 const initialSettings: GameSettings = {
@@ -1046,35 +415,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
   treeVersion: 0,
   activeBranchChildIds: {},
 
-  boardRotation: 0,
-  regionOfInterest: null,
-  isSelectingRegionOfInterest: false,
-  isInsertMode: false,
-  insertAfterNodeId: null,
-  insertAnchorNodeId: null,
-  isEditMode: false,
-  editTool: 'setup-black',
-  copiedBranch: null,
-  editUndoCount: 0,
-  editRedoCount: 0,
   isAiPlaying: false,
   aiColor: null,
   isAnalysisMode: false,
   isContinuousAnalysis: false,
-  isTeachMode: false,
-  notification: null,
   analysisData: null,
-  analysisCacheSize: getAnalysisCacheSize(initialRoot),
   settings: initialSettings,
   engineStatus: 'idle',
   engineError: null,
   engineBackend: null,
-  engineModelName: null,
   isAiThinking: false,
-
-  timerPaused: true,
-  timerMainTimeUsedSeconds: 0,
-  timerPeriodsUsed: { black: 0, white: 0 },
 
   toggleAi: (color) => {
     const s = get();
@@ -1110,6 +460,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   }),
 
   toggleContinuousAnalysis: (quiet = false) => {
+      void quiet;
       const next = !get().isContinuousAnalysis;
       set((state) => ({ isContinuousAnalysis: next, isAnalysisMode: next ? true : state.isAnalysisMode }));
       if (next) {
@@ -1124,10 +475,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
             s.analysisShowPolicy ||
             s.analysisShowOwnership;
           if (!anyOverlayVisible) get().updateSettings({ analysisShowHints: true });
-      }
-      if (!quiet) {
-          const notification = { message: next ? 'Continuous analysis on' : 'Continuous analysis off', type: 'info' as const };
-          set({ notification });
       }
       if (!next) {
           continuousToken++;
@@ -1178,548 +525,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
               }
           }
       })();
-  },
-
-  stopAnalysis: () => {
-      continuousToken++;
-      analysisQueue.cancelGroup('interactive');
-      set({ isContinuousAnalysis: false, engineStatus: 'idle', engineError: null });
-  },
-
-  clearAnalysisCache: () => {
-      const removed = getAnalysisCacheSize(get().rootNode);
-      const notification = {
-        message: removed > 0 ? `Cleared ${removed} cached ${removed === 1 ? 'analysis' : 'analyses'}.` : 'No cached analysis to clear.',
-        type: 'info' as const,
-      };
-      continuousToken++;
-      continuousSearchMsByNodeId.clear();
-      analysisQueue.cancelWhere(() => true, 'Cleared analysis cache');
-      analysisQueue.clearCache();
-      set((state) => {
-        clearAnalysisInSubtree(state.rootNode);
-        return {
-          analysisData: null,
-          analysisCacheSize: 0,
-          isContinuousAnalysis: false,
-                                  engineStatus: 'idle',
-          engineError: null,
-          treeVersion: state.treeVersion + 1,
-          notification,
-        };
-      });
-  },
-
-  toggleTeachMode: () => set((state) => {
-      const newMode = !state.isTeachMode;
-      if (newMode) {
-           // Teach mode implies analysis
-           setTimeout(() => void get().runAnalysis(), 0);
-      }
-      return {
-          isTeachMode: newMode,
-          // If turning on Teach Mode, ensure Analysis Mode is also on (usually)
-          isAnalysisMode: newMode ? true : state.isAnalysisMode
-      };
-  }),
-
-  clearNotification: () => set({ notification: null }),
-
-  toggleTimerPaused: () => set((state) => ({ timerPaused: !state.timerPaused })),
-
-  startSelectRegionOfInterest: () =>
-    set(() => ({
-      isSelectingRegionOfInterest: true,
-    })),
-
-  cancelSelectRegionOfInterest: () =>
-    set(() => ({
-      isSelectingRegionOfInterest: false,
-    })),
-
-  setRegionOfInterest: (roi) => {
-    const normalized = normalizeRegionOfInterest(roi, getBoardSizeFromBoard(get().board));
-    set((state) => ({
-      regionOfInterest: normalized,
-      isSelectingRegionOfInterest: false,
-      treeVersion: state.treeVersion + 1,
-    }));
-    if (get().isAnalysisMode) setTimeout(() => void get().runAnalysis({ force: true }), 0);
-  },
-
-  resetCurrentAnalysis: () => {
-    const s = get();
-    s.currentNode.analysis = null;
-    s.currentNode.analysisVisitsRequested = 0;
-    set((state) => ({ analysisData: null, treeVersion: state.treeVersion + 1 }));
-    if (get().isAnalysisMode) setTimeout(() => void get().runAnalysis({ force: true }), 0);
-  },
-
-  toggleInsertMode: () => {
-    const s = get();
-    if (!s.isInsertMode) {
-      if (s.currentNode.children.length === 0) {
-        const notification = { message: 'Insert mode: no continuation to insert into.', type: 'error' as const };
-        set({ notification });
-        return;
-      }
-      const insertAfter = getActiveChild(s.currentNode, s.activeBranchChildIds);
-      if (!insertAfter) {
-        const notification = { message: 'Insert mode: no continuation to insert into.', type: 'error' as const };
-        set({ notification });
-        return;
-      }
-      set((state) => ({
-        isInsertMode: true,
-        insertAfterNodeId: insertAfter.id,
-        insertAnchorNodeId: state.currentNode.id,
-        treeVersion: state.treeVersion + 1,
-      }));
-      return;
-    }
-
-    const insertAfterId = s.insertAfterNodeId;
-    const anchorId = s.insertAnchorNodeId;
-    if (!insertAfterId || !anchorId) {
-      set({ isInsertMode: false, insertAfterNodeId: null, insertAnchorNodeId: null });
-      return;
-    }
-
-    const insertAfter = findNodeById(s.rootNode, insertAfterId);
-    const anchor = findNodeById(s.rootNode, anchorId);
-    if (!insertAfter || !anchor || insertAfter.parent?.id !== anchor.id) {
-      set({ isInsertMode: false, insertAfterNodeId: null, insertAnchorNodeId: null, treeVersion: s.treeVersion + 1 });
-      return;
-    }
-
-    if (s.currentNode.id === anchor.id) {
-      set((state) => ({
-        isInsertMode: false,
-        insertAfterNodeId: null,
-        insertAnchorNodeId: null,
-        treeVersion: state.treeVersion + 1,
-      }));
-      return;
-    }
-
-    // Copy continuation from insertAfter down its mainline onto the inserted branch.
-    const insertedMoves = new Set<string>();
-    {
-      const above = new Set<string>();
-      let n: GameNode | null = insertAfter;
-      while (n) {
-        above.add(n.id);
-        n = n.parent;
-      }
-      let cur: GameNode | null = s.currentNode;
-      while (cur && !above.has(cur.id)) {
-        if (cur.move) insertedMoves.add(moveKey(cur.move));
-        cur = cur.parent;
-      }
-    }
-
-    let numCopied = 0;
-    let from: GameNode | null = insertAfter;
-    let to: GameNode = s.currentNode;
-
-    const tryCreateChild = (parent: GameNode, move: Move): GameNode | null => {
-      const st = parent.gameState;
-      if (st.currentPlayer !== move.player) return null;
-
-      if (isPassMove(move)) {
-        const nextPlayer: Player = st.currentPlayer === 'black' ? 'white' : 'black';
-        const nextState: GameState = {
-          board: st.board,
-          currentPlayer: nextPlayer,
-          moveHistory: [...st.moveHistory, move],
-          capturedBlack: st.capturedBlack,
-          capturedWhite: st.capturedWhite,
-          komi: st.komi,
-        };
-        const child = createNode(parent, move, nextState);
-        parent.children.push(child);
-        return child;
-      }
-
-	      if (st.board[move.y]?.[move.x] !== null) return null;
-	      const tentativeBoard = st.board.map((row) => [...row]);
-	      tentativeBoard[move.y]![move.x] = st.currentPlayer;
-	      const captured = applyCapturesInPlace(tentativeBoard, move.x, move.y, st.currentPlayer);
-	      const newBoard = tentativeBoard;
-	      if (captured.length === 0) {
-	        const { liberties } = getLiberties(newBoard, move.x, move.y);
-	        if (liberties === 0) return null;
-	      }
-      if (parent.parent && boardsEqual(newBoard, parent.parent.gameState.board)) return null;
-
-      const newCapturedBlack = st.capturedBlack + (st.currentPlayer === 'white' ? captured.length : 0);
-      const newCapturedWhite = st.capturedWhite + (st.currentPlayer === 'black' ? captured.length : 0);
-      const nextPlayer: Player = st.currentPlayer === 'black' ? 'white' : 'black';
-      const nextState: GameState = {
-        board: newBoard,
-        currentPlayer: nextPlayer,
-        moveHistory: [...st.moveHistory, move],
-        capturedBlack: newCapturedBlack,
-        capturedWhite: newCapturedWhite,
-        komi: st.komi,
-      };
-
-      const child = createNode(parent, move, nextState);
-      parent.children.push(child);
-      return child;
-    };
-
-    while (from) {
-      const move = from.move;
-      if (!move) break;
-      if (!insertedMoves.has(moveKey(move))) {
-        const child = tryCreateChild(to, move);
-        if (!child) break;
-        to = child;
-        numCopied++;
-      }
-      from = getActiveChild(from, s.activeBranchChildIds);
-    }
-
-    const notification = numCopied > 0 ? { message: `Insert mode ended: copied ${numCopied} moves.`, type: 'info' as const } : null;
-    set((state) => ({
-      isInsertMode: false,
-      insertAfterNodeId: null,
-      insertAnchorNodeId: null,
-      treeVersion: state.treeVersion + 1,
-      notification: notification ?? state.notification,
-    }));
-  },
-
-  toggleEditMode: () =>
-    set((state) => ({
-      isEditMode: !state.isEditMode,
-      isSelectingRegionOfInterest: false,
-      notification: !state.isEditMode
-        ? { message: 'Edit mode: setup stones, labels, and markers are active.', type: 'info' }
-        : null,
-    })),
-
-  setEditTool: (tool) =>
-    set(() => ({
-      editTool: tool,
-      isEditMode: true,
-      isSelectingRegionOfInterest: false,
-    })),
-
-  clearCurrentNodeAnnotations: () =>
-    set((state) => {
-      const props = ensureNodeProperties(state.currentNode);
-      const clearKeys = [...MARKER_PROPERTIES, ...SEGMENT_PROPERTIES, 'LB'];
-      const changed = clearKeys.some((key) => !!props[key]?.length);
-      if (!changed) return {};
-      const history = pushEditHistory(state);
-      for (const key of clearKeys) delete props[key];
-      return {
-        ...history,
-        treeVersion: state.treeVersion + 1,
-        notification: { message: 'Cleared markers, labels and drawings on this node.', type: 'info', undoable: true },
-      };
-    }),
-
-  addSegmentMarkup: (prop, sx, sy, ex, ey) =>
-    set((state) => {
-      const boardSize = state.board.length;
-      const inRange = (x: number, y: number) => x >= 0 && y >= 0 && x < boardSize && y < boardSize;
-      if (!inRange(sx, sy) || !inRange(ex, ey) || (sx === ex && sy === ey)) return {};
-      const props = ensureNodeProperties(state.currentNode);
-      const value = `${coordinateToSgf(sx, sy)}:${coordinateToSgf(ex, ey)}`;
-      if (props[prop]?.includes(value)) return {};
-      const history = pushEditHistory(state);
-      addUniqueValue(props, prop, value);
-      return {
-        ...history,
-        treeVersion: state.treeVersion + 1,
-      };
-    }),
-
-  addNodeDrawing: (drawing) =>
-    set((state) => {
-      if (drawing.points.length < 2) return {};
-      const node = state.currentNode;
-      node.drawings = [...(node.drawings ?? []), drawing];
-      return { treeVersion: state.treeVersion + 1 };
-    }),
-
-  clearNodeDrawings: () =>
-    set((state) => {
-      const node = state.currentNode;
-      if (!node.drawings?.length) return {};
-      node.drawings = [];
-      return {
-        treeVersion: state.treeVersion + 1,
-        notification: { message: 'Cleared drawings on this node.', type: 'info', undoable: true },
-      };
-    }),
-
-  applyEditTool: (x, y, options = {}) =>
-    set((state) => {
-      const boardSize = state.board.length;
-      if (x < 0 || y < 0 || x >= boardSize || y >= boardSize) return {};
-
-      const node = state.currentNode;
-      const props = ensureNodeProperties(node);
-      const coord = coordinateToSgf(x, y);
-      const tool = state.editTool;
-      const markerProp = editToolToMarkerProperty(tool);
-
-      if (markerProp) {
-        const hasSameMarker = props[markerProp]?.includes(coord) ?? false;
-        if (hasSameMarker) {
-          if (options.paintOnly) return {};
-          const history = pushEditHistory(state);
-          removeValue(props, markerProp, (value) => value === coord);
-          return {
-            ...history,
-            treeVersion: state.treeVersion + 1,
-            notification: { message: `Removed ${markerProp} marker.`, type: 'info', undoable: true },
-          };
-        }
-
-        const history = pushEditHistory(state);
-        removeMarkupCoord(props, coord);
-        addUniqueValue(props, markerProp, coord);
-        return {
-          ...history,
-          treeVersion: state.treeVersion + 1,
-          notification: { message: `Added ${markerProp} marker.`, type: 'info', undoable: true },
-        };
-      }
-
-      if (tool === 'label-alpha' || tool === 'label-number') {
-        const history = pushEditHistory(state);
-        removeMarkupCoord(props, coord);
-        const label = tool === 'label-alpha' ? nextAlphaLabel(props) : nextNumberLabel(props);
-        addUniqueValue(props, 'LB', `${coord}:${label}`);
-        return {
-          ...history,
-          treeVersion: state.treeVersion + 1,
-          notification: { message: `Added label ${label}.`, type: 'info', undoable: true },
-        };
-      }
-
-      if (tool === 'marker-erase') {
-        if (!hasMarkupCoord(props, coord)) return {};
-        const history = pushEditHistory(state);
-        removeMarkupCoord(props, coord);
-        return {
-          ...history,
-          treeVersion: state.treeVersion + 1,
-          notification: { message: 'Removed marker or label.', type: 'info', undoable: true },
-        };
-      }
-
-      if (tool !== 'setup-black' && tool !== 'setup-white' && tool !== 'setup-alternate' && tool !== 'setup-erase') return {};
-
-      const nextBoard = cloneBoard(node.gameState.board);
-      const currentStone = nextBoard[y]?.[x] ?? null;
-      const nextStone: Player | null =
-        tool === 'setup-black'
-          ? 'black'
-          : tool === 'setup-white'
-            ? 'white'
-            : tool === 'setup-alternate'
-              ? nextAlternateSetupStone(props, currentStone)
-              : null;
-      if (currentStone === nextStone) return {};
-      const history = pushEditHistory(state);
-      nextBoard[y]![x] = nextStone;
-
-      removeSetupCoord(props, coord);
-      if (nextStone === 'black') addUniqueValue(props, 'AB', coord);
-      else if (nextStone === 'white') addUniqueValue(props, 'AW', coord);
-      else addUniqueValue(props, 'AE', coord);
-
-      node.gameState = { ...node.gameState, board: nextBoard };
-      node.analysis = null;
-      node.analysisVisitsRequested = 0;
-      clearAnalysisInSubtree(node);
-      const pruned = rebuildDescendants(node);
-
-      const setupWord =
-        nextStone === 'black' ? 'black setup stone' : nextStone === 'white' ? 'white setup stone' : 'setup stone';
-      const summary = pruned > 0 ? ` ${pruned} descendant ${pruned === 1 ? 'node was' : 'nodes were'} pruned.` : '';
-      return {
-        ...history,
-        currentNode: node,
-        board: node.gameState.board,
-        currentPlayer: node.gameState.currentPlayer,
-        moveHistory: node.gameState.moveHistory,
-        capturedBlack: node.gameState.capturedBlack,
-        capturedWhite: node.gameState.capturedWhite,
-        analysisData: null,
-        treeVersion: state.treeVersion + 1,
-        notification: { message: `Edited ${setupWord}.${summary}`, type: pruned > 0 ? 'success' : 'info', undoable: true },
-      };
-    }),
-
-  toggleBoardPointMarkup: (x, y) =>
-    set((state) => {
-      const boardSize = state.board.length;
-      if (x < 0 || y < 0 || x >= boardSize || y >= boardSize) return {};
-
-      const node = state.currentNode;
-      const props = ensureNodeProperties(node);
-      const coord = coordinateToSgf(x, y);
-
-      if (state.isEditMode) {
-        if (hasMarkupCoord(props, coord)) {
-          const history = pushEditHistory(state);
-          removeMarkupCoord(props, coord);
-          return {
-            ...history,
-            treeVersion: state.treeVersion + 1,
-            notification: { message: 'Removed marker or label.', type: 'info', undoable: true },
-          };
-        }
-
-        const nextBoard = cloneBoard(node.gameState.board);
-        const currentStone = nextBoard[y]?.[x] ?? null;
-        if (!currentStone && !hasSetupCoord(props, coord)) return {};
-        const history = pushEditHistory(state);
-        nextBoard[y]![x] = null;
-        removeSetupCoord(props, coord);
-        addUniqueValue(props, 'AE', coord);
-
-        node.gameState = { ...node.gameState, board: nextBoard };
-        node.analysis = null;
-        node.analysisVisitsRequested = 0;
-        clearAnalysisInSubtree(node);
-        const pruned = rebuildDescendants(node);
-        const summary = pruned > 0 ? ` ${pruned} descendant ${pruned === 1 ? 'node was' : 'nodes were'} pruned.` : '';
-        return {
-          ...history,
-          currentNode: node,
-          board: node.gameState.board,
-          currentPlayer: node.gameState.currentPlayer,
-          moveHistory: node.gameState.moveHistory,
-          capturedBlack: node.gameState.capturedBlack,
-          capturedWhite: node.gameState.capturedWhite,
-          analysisData: null,
-          treeVersion: state.treeVersion + 1,
-          notification: { message: `Removed setup stone.${summary}`, type: pruned > 0 ? 'success' : 'info', undoable: true },
-        };
-      }
-
-      const hasCross = props.MA?.includes(coord) ?? false;
-      if (hasCross) {
-        const history = pushEditHistory(state);
-        removeValue(props, 'MA', (value) => value === coord);
-        return {
-          ...history,
-          treeVersion: state.treeVersion + 1,
-          notification: { message: 'Removed cross marker.', type: 'info', undoable: true },
-        };
-      }
-
-      const history = pushEditHistory(state);
-      removeMarkupCoord(props, coord);
-      addUniqueValue(props, 'MA', coord);
-      return {
-        ...history,
-        treeVersion: state.treeVersion + 1,
-        notification: { message: 'Added cross marker.', type: 'info', undoable: true },
-      };
-    }),
-
-  clearCurrentNodeSetupStones: () => set((state) => {
-      const node = state.currentNode;
-      const props = ensureNodeProperties(node);
-      const setupCount = SETUP_PROPERTIES.reduce((total, key) => total + (props[key]?.length ?? 0), 0);
-      if (setupCount === 0) return {};
-      const history = pushEditHistory(state);
-      const removed = removeSetupProperties(props);
-
-      if (node.parent) {
-        const rebuilt = replayChildMove(node.parent, node);
-        if (rebuilt) node.gameState = rebuilt;
-      } else {
-        const boardSize = getBoardSizeFromBoard(node.gameState.board);
-        const board = createEmptyBoard(boardSize);
-        const handicap = Number.parseInt(props.HA?.[0] ?? '0', 10);
-        const safeHandicap = Number.isFinite(handicap) ? Math.max(0, Math.min(handicap, getMaxHandicap(boardSize))) : 0;
-        if (safeHandicap > 0) applyHandicapStones(board, boardSize, safeHandicap);
-        node.gameState = {
-          ...node.gameState,
-          board,
-        };
-      }
-
-      node.analysis = null;
-      node.analysisVisitsRequested = 0;
-      clearAnalysisInSubtree(node);
-      const pruned = rebuildDescendants(node);
-      const summary = pruned > 0 ? ` ${pruned} descendant ${pruned === 1 ? 'node was' : 'nodes were'} pruned.` : '';
-      return {
-        ...history,
-        currentNode: node,
-        board: node.gameState.board,
-        currentPlayer: node.gameState.currentPlayer,
-        moveHistory: node.gameState.moveHistory,
-        capturedBlack: node.gameState.capturedBlack,
-        capturedWhite: node.gameState.capturedWhite,
-        analysisData: null,
-        treeVersion: state.treeVersion + 1,
-        notification: { message: `Cleared ${removed} setup stone${removed === 1 ? '' : 's'}.${summary}`, type: pruned > 0 ? 'success' : 'info', undoable: true },
-      };
-    }),
-
-  applySetupStones: (stones) => {
-    let changed = 0;
-    set((state) => {
-      const boardSize = state.board.length;
-      const node = state.currentNode;
-      const props = ensureNodeProperties(node);
-      const nextBoard = cloneBoard(node.gameState.board);
-      const hasChange = stones.some(
-        (stone) =>
-          stone.x >= 0 &&
-          stone.y >= 0 &&
-          stone.x < boardSize &&
-          stone.y < boardSize &&
-          (nextBoard[stone.y]?.[stone.x] ?? null) !== stone.player
-      );
-      if (!hasChange) return {};
-      const history = pushEditHistory(state);
-
-      for (const stone of stones) {
-        if (stone.x < 0 || stone.y < 0 || stone.x >= boardSize || stone.y >= boardSize) continue;
-        if ((nextBoard[stone.y]?.[stone.x] ?? null) === stone.player) continue;
-        const coord = coordinateToSgf(stone.x, stone.y);
-        nextBoard[stone.y]![stone.x] = stone.player;
-        removeSetupCoord(props, coord);
-        if (stone.player === 'black') addUniqueValue(props, 'AB', coord);
-        else if (stone.player === 'white') addUniqueValue(props, 'AW', coord);
-        else addUniqueValue(props, 'AE', coord);
-        changed++;
-      }
-
-      if (changed === 0) return {};
-
-      node.gameState = { ...node.gameState, board: nextBoard };
-      node.analysis = null;
-      node.analysisVisitsRequested = 0;
-      clearAnalysisInSubtree(node);
-      rebuildDescendants(node);
-
-      return {
-        ...history,
-        currentNode: node,
-        board: node.gameState.board,
-        currentPlayer: node.gameState.currentPlayer,
-        moveHistory: node.gameState.moveHistory,
-        capturedBlack: node.gameState.capturedBlack,
-        capturedWhite: node.gameState.capturedWhite,
-        analysisData: null,
-        treeVersion: state.treeVersion + 1,
-      };
-    });
-    return changed;
   },
 
   runAnalysis: async (opts) => {
@@ -1781,7 +586,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             analysis: KataGoAnalysisPayload,
             opts: { includeTerritory: boolean; fallbackTerritory: number[][] }
           ): AnalysisResult => {
-            let analysisWithTerritory: AnalysisResult = {
+            const analysisWithTerritory: AnalysisResult = {
               rootWinRate: analysis.rootWinRate,
               rootScoreLead: analysis.rootScoreLead,
               rootScoreSelfplay: analysis.rootScoreSelfplay,
@@ -1801,26 +606,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
               ownershipStdev: analysis.ownershipStdev,
               ownershipMode: state.settings.katagoOwnershipMode,
             };
-
-            const roi = get().regionOfInterest;
-            if (roi) {
-              analysisWithTerritory = {
-                ...analysisWithTerritory,
-                moves: analysisWithTerritory.moves.filter((m) => isMoveInRegion(m, roi)),
-                policy: analysisWithTerritory.policy
-                  ? (() => {
-                      const p = analysisWithTerritory.policy.slice();
-                      for (let y = 0; y < boardSize; y++) {
-                        for (let x = 0; x < boardSize; x++) {
-                          if (x >= roi.xMin && x <= roi.xMax && y >= roi.yMin && y <= roi.yMax) continue;
-                          p[y * boardSize + x] = -1;
-                        }
-                      }
-                      return p;
-                    })()
-                  : analysisWithTerritory.policy,
-              };
-            }
 
             return analysisWithTerritory;
           };
@@ -1855,10 +640,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
                 next.engineStatus = 'ready';
                 next.engineError = null;
                 next.engineBackend = engineInfo.backend;
-                next.engineModelName = engineInfo.modelName;
               }
               if (shouldBumpTree) next.treeVersion = s.treeVersion + 1;
-              if (isFinal) next.analysisCacheSize = getAnalysisCacheSize(s.rootNode);
               return next;
             });
           };
@@ -1880,7 +663,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
         modelUrl,
         state.settings.katagoBackend,
         rules,
-        JSON.stringify(state.regionOfInterest ?? null),
         topK,
         analysisPvLen,
         state.settings.katagoOwnershipMode,
@@ -1908,7 +690,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (needsEngineLoad) set({ engineStatus: 'loading', engineError: null });
       await engineClient.init(modelUrl, state.settings.katagoBackend);
       const initializedInfo = engineClient.getEngineInfo();
-      set({ engineStatus: 'ready', engineBackend: initializedInfo.backend, engineModelName: initializedInfo.modelName });
+      set({ engineStatus: 'ready', engineBackend: initializedInfo.backend });
 
       set((s) => (s.engineBackend && s.engineStatus !== 'error'
         ? { engineError: null }
@@ -1938,7 +720,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
 	          moveHistory: state.moveHistory,
 	          komi: komiWithHandicapBonus(state.rootNode.gameState.board, rules, state.komi),
             rules,
-            regionOfInterest: state.regionOfInterest,
 	          topK,
             includeMovesOwnership: state.settings.katagoOwnershipMode === 'tree',
             analysisPvLen,
@@ -1967,72 +748,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
         })
         .then((analysis) => {
           applyAnalysis(analysis, true);
-
-          const maybeApplyTeachUndo = () => {
-            const latestState = get();
-            if (!latestState.isTeachMode) return;
-
-            const current = latestState.currentNode;
-            const move = current.move;
-            const parent = current.parent;
-            if (!move || !parent) return;
-            if (current.autoUndo !== null && current.autoUndo !== undefined) return;
-            if (latestState.isAiPlaying && latestState.aiColor === move.player) return;
-
-            const parentScore = parent.analysis?.rootScoreLead;
-            const childScore = current.analysis?.rootScoreLead;
-            if (typeof parentScore !== 'number' || typeof childScore !== 'number') return;
-
-            const pointsLost = (move.player === 'black' ? 1 : -1) * (parentScore - childScore);
-            const thresholds = latestState.settings.trainerEvalThresholds?.length
-              ? latestState.settings.trainerEvalThresholds
-              : ([12, 6, 3, 1.5, 0.5, 0] as const);
-
-            let i = 0;
-            while (i < thresholds.length - 1 && pointsLost < thresholds[i]!) i++;
-            const undoPrompts = latestState.settings.teachNumUndoPrompts ?? [];
-            const idx = Math.max(0, Math.min(i, undoPrompts.length - 1));
-            const numUndos = undoPrompts[idx] ?? 0;
-
-            let undo = false;
-            if (numUndos === 0) {
-              undo = false;
-            } else if (numUndos < 1) {
-              const r = typeof current.undoThreshold === 'number' ? current.undoThreshold : Math.random();
-              current.undoThreshold = r;
-              undo = r < numUndos && parent.children.length === 1;
-            } else {
-              undo = parent.children.length <= numUndos;
-            }
-
-            current.autoUndo = undo;
-            set((s) => ({ treeVersion: s.treeVersion + 1 }));
-
-            if (!undo) return;
-
-            const moveLabel =
-              move.x < 0 || move.y < 0
-                ? 'Pass'
-                : `${String.fromCharCode(65 + (move.x >= 8 ? move.x + 1 : move.x))}${boardSize - move.y}`;
-
-            const notification = {
-              message: `Teaching undo: ${moveLabel} (${pointsLost.toFixed(1)} points lost)`,
-              type: 'info' as const,
-            };
-            set({ notification });
-            latestState.navigateBack();
-          };
-
-          maybeApplyTeachUndo();
         })
         .catch((err: unknown) => {
           if (isAnalysisCanceled(err)) return;
           const msg = err instanceof Error ? err.message : String(err);
-          const notification = { message: `Analysis error: ${msg}`, type: 'error' as const };
           set({
             engineStatus: 'error',
             engineError: msg,
-            notification,
           });
           if (opts?.propagateErrors) throw err;
         });
@@ -2076,7 +798,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       clearAnalysis(state.rootNode);
 
       const rulesChanged = newSettings.gameRules !== undefined && newSettings.gameRules !== state.settings.gameRules;
-      const history = rulesChanged ? pushEditHistory(state) : {};
       if (rulesChanged) {
         state.rootNode.properties = state.rootNode.properties ?? {};
         state.rootNode.properties['RU'] = [rulesToSgfRu(nextSettings.gameRules)];
@@ -2088,215 +809,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
         engineStatus: 'idle',
         engineError: null,
         engineBackend: null,
-        engineModelName: null,
-        analysisCacheSize: 0,
         isContinuousAnalysis: false,
-                          ...history,
         treeVersion: rulesChanged ? state.treeVersion + 1 : state.treeVersion,
       };
-    }),
-
-  setKomi: (komi) => {
-    if (!Number.isFinite(komi)) return;
-    const nextKomi = Number(komi.toFixed(2));
-    const nextKomiText = formatKomiProperty(nextKomi);
-    const current = get();
-    const currentKomiText = current.rootNode.properties?.KM?.[0] ?? '';
-    const sameKomi = Math.abs(current.komi - nextKomi) < 0.0001;
-    if (sameKomi) {
-      if (currentKomiText === nextKomiText) return;
-      set((state) => {
-        const history = pushEditHistory(state);
-        state.rootNode.properties = state.rootNode.properties ?? {};
-        state.rootNode.properties.KM = [nextKomiText];
-        return { ...history, treeVersion: state.treeVersion + 1 };
-      });
-      return;
-    }
-
-    continuousToken++;
-    continuousSearchMsByNodeId.clear();
-    analysisQueue.cancelWhere(() => true, 'Komi changed');
-    analysisQueue.clearCache();
-
-    set((state) => {
-      const history = pushEditHistory(state);
-      state.rootNode.properties = state.rootNode.properties ?? {};
-      state.rootNode.properties.KM = [nextKomiText];
-      applyKomiToSubtree(state.rootNode, nextKomi);
-      clearAnalysisInSubtree(state.rootNode);
-
-      return {
-        komi: nextKomi,
-        board: state.currentNode.gameState.board,
-        currentPlayer: state.currentNode.gameState.currentPlayer,
-        moveHistory: state.currentNode.gameState.moveHistory,
-        capturedBlack: state.currentNode.gameState.capturedBlack,
-        capturedWhite: state.currentNode.gameState.capturedWhite,
-        analysisData: null,
-        analysisCacheSize: 0,
-        isContinuousAnalysis: false,
-                          engineStatus: 'idle',
-        engineError: null,
-        ...history,
-        treeVersion: state.treeVersion + 1,
-      };
-    });
-  },
-
-  setHandicap: (handicap) => {
-    if (!Number.isFinite(handicap)) return;
-    const current = get();
-    const boardSize = getBoardSizeFromBoard(current.rootNode.gameState.board);
-    const nextHandicap = Math.max(0, Math.min(Math.floor(handicap), getMaxHandicap(boardSize)));
-    const currentHandicap = parseHandicapProperty(current.rootNode.properties, boardSize);
-    const currentHandicapText = current.rootNode.properties?.HA?.[0] ?? '';
-    const nextHandicapText = nextHandicap > 0 ? String(nextHandicap) : '';
-    if (currentHandicap === nextHandicap) {
-      const hasHandicapPlayer = current.rootNode.properties?.PL?.[0] === 'W';
-      const setupMatchesBoard = rootSetupPropertiesMatchBoard(
-        current.rootNode.properties,
-        current.rootNode.gameState.board,
-        boardSize,
-        nextHandicap
-      );
-      if (
-        currentHandicapText === nextHandicapText &&
-        (nextHandicap > 0 ? hasHandicapPlayer : !hasHandicapPlayer) &&
-        setupMatchesBoard
-      ) {
-        return;
-      }
-      set((state) => {
-        const history = pushEditHistory(state);
-        state.rootNode.properties = state.rootNode.properties ?? {};
-        if (nextHandicap > 0) {
-          state.rootNode.properties.HA = [nextHandicapText];
-          state.rootNode.properties.PL = ['W'];
-        } else {
-          delete state.rootNode.properties.HA;
-          if (state.rootNode.properties.PL?.[0] === 'W') delete state.rootNode.properties.PL;
-        }
-        const rootBoardSize = getBoardSizeFromBoard(state.rootNode.gameState.board);
-        syncRootSetupPropertiesFromBoard(
-          state.rootNode.properties,
-          state.rootNode.gameState.board,
-          rootBoardSize,
-          nextHandicap
-        );
-        return { ...history, rootNode: state.rootNode, treeVersion: state.treeVersion + 1 };
-      });
-      return;
-    }
-
-    continuousToken++;
-    continuousSearchMsByNodeId.clear();
-    analysisQueue.cancelWhere(() => true, 'Handicap changed');
-    analysisQueue.clearCache();
-
-    set((state) => {
-      const history = pushEditHistory(state);
-      const root = state.rootNode;
-      const rootBoardSize = getBoardSizeFromBoard(root.gameState.board);
-      const oldHandicap = parseHandicapProperty(root.properties, rootBoardSize);
-      const nextBoard = applyRootHandicap(root.gameState.board, rootBoardSize, oldHandicap, nextHandicap);
-      const nextPlayer: Player = nextHandicap > 0 ? 'white' : 'black';
-      root.properties = root.properties ?? {};
-      if (nextHandicap > 0) {
-        root.properties.HA = [String(nextHandicap)];
-        root.properties.PL = ['W'];
-      } else {
-        delete root.properties.HA;
-        if (root.properties.PL?.[0] === 'W') delete root.properties.PL;
-      }
-      root.gameState = {
-        ...root.gameState,
-        board: nextBoard,
-        currentPlayer: nextPlayer,
-        moveHistory: [],
-        capturedBlack: 0,
-        capturedWhite: 0,
-      };
-      syncRootSetupPropertiesFromBoard(root.properties, nextBoard, rootBoardSize, nextHandicap);
-      clearAnalysisInSubtree(root);
-      rebuildDescendants(root);
-      const currentNode = findNodeById(root, state.currentNode.id) ?? root;
-
-      return {
-        currentNode,
-        board: currentNode.gameState.board,
-        currentPlayer: currentNode.gameState.currentPlayer,
-        moveHistory: currentNode.gameState.moveHistory,
-        capturedBlack: currentNode.gameState.capturedBlack,
-        capturedWhite: currentNode.gameState.capturedWhite,
-        analysisData: null,
-        analysisCacheSize: 0,
-        isContinuousAnalysis: false,
-                          engineStatus: 'idle',
-        engineError: null,
-        ...history,
-        treeVersion: state.treeVersion + 1,
-      };
-    });
-  },
-
-  setRootProperty: (key, value) => {
-    const normalizedKey = key.toUpperCase();
-    if (normalizedKey === 'KM') {
-      const parsed = Number(value.trim());
-      if (Number.isFinite(parsed)) get().setKomi(parsed);
-      return;
-    }
-    if (normalizedKey === 'RU') {
-      const parsed = parseSgfRu(value.trim());
-      if (parsed) {
-        const current = get();
-        const canonical = rulesToSgfRu(parsed);
-        if (parsed === current.settings.gameRules) {
-          set((state) => {
-            const currentRulesText = state.rootNode.properties?.RU?.[0] ?? '';
-            if (currentRulesText === canonical) return {};
-            const history = pushEditHistory(state);
-            state.rootNode.properties = state.rootNode.properties ?? {};
-            state.rootNode.properties.RU = [canonical];
-            return { ...history, rootNode: state.rootNode, treeVersion: state.treeVersion + 1 };
-          });
-        } else {
-          current.updateSettings({ gameRules: parsed });
-        }
-        return;
-      }
-    }
-    if (normalizedKey === 'HA') {
-      const trimmed = value.trim();
-      if (!trimmed) {
-        get().setHandicap(0);
-        return;
-      }
-      const parsed = Number.parseInt(trimmed, 10);
-      if (Number.isFinite(parsed)) get().setHandicap(parsed);
-      return;
-    }
-
-    set((state) => {
-      const trimmed = value.trim();
-      const currentValue = state.rootNode.properties?.[key]?.[0] ?? '';
-      if (currentValue === trimmed) return {};
-      const history = pushEditHistory(state);
-      state.rootNode.properties = state.rootNode.properties ?? {};
-      if (!trimmed) {
-        delete state.rootNode.properties[key];
-      } else {
-        state.rootNode.properties[key] = [trimmed];
-      }
-      return { ...history, rootNode: state.rootNode, treeVersion: state.treeVersion + 1 };
-    });
-  },
-
-  setCurrentNodeNote: (note) =>
-    set((state) => {
-      state.currentNode.note = note;
-      return { treeVersion: state.treeVersion + 1 };
     }),
 
   playMove: (x: number, y: number, isLoad = false) => {
@@ -2469,33 +984,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
     invalidateAiRequests('Position changed');
     set({ isAiThinking: false });
     return set((state) => {
-    if (state.isInsertMode && state.currentNode.parent && state.insertAfterNodeId) {
-      const insertAfter = findNodeById(state.rootNode, state.insertAfterNodeId);
-      if (insertAfter) {
-        const above = new Set<string>();
-        let n: GameNode | null = insertAfter;
-        while (n) {
-          above.add(n.id);
-          n = n.parent;
-        }
-	        if (!above.has(state.currentNode.id)) {
-	          const node = state.currentNode;
-	          const parent = node.parent!;
-	          const idx = parent.children.findIndex((c) => c.id === node.id);
-	          if (idx >= 0) parent.children.splice(idx, 1);
-	          return {
-	            currentNode: parent,
-            board: parent.gameState.board,
-            currentPlayer: parent.gameState.currentPlayer,
-            moveHistory: parent.gameState.moveHistory,
-            capturedBlack: parent.gameState.capturedBlack,
-            capturedWhite: parent.gameState.capturedWhite,
-            analysisData: parent.analysis || null,
-            treeVersion: state.treeVersion + 1,
-          };
-        }
-      }
-    }
     if (!state.currentNode.parent) return {};
     const prevNode = state.currentNode.parent;
     return {
@@ -2513,401 +1001,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
   },
 
-  navigateForward: () => {
-    invalidateAiRequests('Navigated forward');
-    return set((state) => {
-      const nextNode = getActiveChild(state.currentNode, state.activeBranchChildIds);
-      if (!nextNode) return {};
-      return {
-          currentNode: nextNode,
-          board: nextNode.gameState.board,
-          currentPlayer: nextNode.gameState.currentPlayer,
-          moveHistory: nextNode.gameState.moveHistory,
-          capturedBlack: nextNode.gameState.capturedBlack,
-          capturedWhite: nextNode.gameState.capturedWhite,
-          analysisData: nextNode.analysis || null,
-          activeBranchChildIds: rememberActiveBranchPath(state.activeBranchChildIds, nextNode),
-      };
-    });
-  },
-
-  navigateStart: () => {
-    invalidateAiRequests('Navigated to start');
-    return set((state) => {
-      let node = state.currentNode;
-      while (node.parent) {
-          node = node.parent;
-      }
-      return {
-          currentNode: node,
-          board: node.gameState.board,
-          currentPlayer: node.gameState.currentPlayer,
-          moveHistory: node.gameState.moveHistory,
-          capturedBlack: node.gameState.capturedBlack,
-          capturedWhite: node.gameState.capturedWhite,
-          analysisData: node.analysis || null,
-      };
-    });
-  },
-
-  navigateEnd: () => {
-    invalidateAiRequests('Navigated to end');
-    return set((state) => {
-      let node = state.currentNode;
-      let activeBranchChildIds = state.activeBranchChildIds;
-      while (node.children.length > 0) {
-          const child = getActiveChild(node, activeBranchChildIds);
-          if (!child) break;
-          activeBranchChildIds = rememberActiveBranchPath(activeBranchChildIds, child);
-          node = child;
-      }
-      return {
-          currentNode: node,
-          board: node.gameState.board,
-          currentPlayer: node.gameState.currentPlayer,
-          moveHistory: node.gameState.moveHistory,
-          capturedBlack: node.gameState.capturedBlack,
-          capturedWhite: node.gameState.capturedWhite,
-          analysisData: node.analysis || null,
-          activeBranchChildIds,
-      };
-    });
-  },
-
-  switchBranch: (direction) => {
-    invalidateAiRequests('Switched branch');
-    return set((state) => {
-      const next = findSiblingBranchTarget(state.currentNode, direction);
-      if (!next) return {};
-
-      return {
-          currentNode: next,
-          board: next.gameState.board,
-          currentPlayer: next.gameState.currentPlayer,
-          moveHistory: next.gameState.moveHistory,
-          capturedBlack: next.gameState.capturedBlack,
-          capturedWhite: next.gameState.capturedWhite,
-          analysisData: next.analysis || null,
-          activeBranchChildIds: rememberActiveBranchPath(state.activeBranchChildIds, next),
-      };
-    });
-  },
-
-  switchToBranchIndex: (index) => {
-    invalidateAiRequests('Switched branch');
-    return set((state) => {
-      const next = findBranchTargetByIndex(state.currentNode, index);
-      if (!next) return { notification: { message: 'Branch number unavailable.', type: 'info' } };
-
-      return {
-          currentNode: next,
-          board: next.gameState.board,
-          currentPlayer: next.gameState.currentPlayer,
-          moveHistory: next.gameState.moveHistory,
-          capturedBlack: next.gameState.capturedBlack,
-          capturedWhite: next.gameState.capturedWhite,
-          analysisData: next.analysis || null,
-          activeBranchChildIds: rememberActiveBranchPath(state.activeBranchChildIds, next),
-      };
-    });
-  },
-
-  navigateToMove: (moveNumber) => {
-    invalidateAiRequests('Navigated to move');
-    return set((state) => {
-      const target = findCurrentLineMoveTarget(state.currentNode, moveNumber, state.activeBranchChildIds);
-      if (!target || target.id === state.currentNode.id) return {};
-
-      return {
-          currentNode: target,
-          board: target.gameState.board,
-          currentPlayer: target.gameState.currentPlayer,
-          moveHistory: target.gameState.moveHistory,
-          capturedBlack: target.gameState.capturedBlack,
-          capturedWhite: target.gameState.capturedWhite,
-          analysisData: target.analysis || null,
-          activeBranchChildIds: rememberActiveBranchPath(state.activeBranchChildIds, target),
-      };
-    });
-  },
-
-  undoToBranchPoint: () => {
-    invalidateAiRequests('Undo to branch point');
-    set({ isAiThinking: false });
-    return set((state) => {
-      let node = state.currentNode;
-      while (node.parent) {
-          node = node.parent;
-          if (node.children.length > 1) break;
-      }
-      if (node.id === state.currentNode.id) return {};
-      return {
-          currentNode: node,
-          board: node.gameState.board,
-          currentPlayer: node.gameState.currentPlayer,
-          moveHistory: node.gameState.moveHistory,
-          capturedBlack: node.gameState.capturedBlack,
-          capturedWhite: node.gameState.capturedWhite,
-          analysisData: node.analysis || null,
-      };
-    });
-  },
-
-  undoToMainBranch: () => {
-    invalidateAiRequests('Undo to main branch');
-    set({ isAiThinking: false });
-    return set((state) => {
-      let node = state.currentNode;
-      let lastBranchingNode = node;
-      while (node.parent) {
-          const prev = node;
-          node = node.parent;
-          if (node.children.length > 1 && node.children[0] !== prev) {
-              lastBranchingNode = node;
-          }
-      }
-      if (lastBranchingNode.id === state.currentNode.id) return {};
-      return {
-          currentNode: lastBranchingNode,
-          board: lastBranchingNode.gameState.board,
-          currentPlayer: lastBranchingNode.gameState.currentPlayer,
-          moveHistory: lastBranchingNode.gameState.moveHistory,
-          capturedBlack: lastBranchingNode.gameState.capturedBlack,
-          capturedWhite: lastBranchingNode.gameState.capturedWhite,
-          analysisData: lastBranchingNode.analysis || null,
-      };
-    });
-  },
-
-  makeCurrentNodeMainBranch: () => set((state) => {
-      const selected = state.currentNode;
-      let hasChange = false;
-      let cursor: GameNode | null = selected;
-      while (cursor && cursor.parent) {
-          const parent: GameNode = cursor.parent;
-          const cursorId = cursor.id;
-          const idx = parent.children.findIndex((c: GameNode) => c.id === cursorId);
-          if (idx > 0) {
-              hasChange = true;
-              break;
-          }
-          cursor = parent;
-      }
-      if (!hasChange) return { notification: { message: 'Current line is already the main branch.', type: 'info' } };
-      const history = pushEditHistory(state);
-      let node: GameNode | null = selected;
-      while (node && node.parent) {
-          const parent: GameNode = node.parent;
-          const nodeId = node.id;
-          const idx = parent.children.findIndex((c: GameNode) => c.id === nodeId);
-          if (idx > 0) {
-              parent.children.splice(idx, 1);
-              parent.children.unshift(node);
-          }
-          node = parent;
-      }
-      return { ...history, treeVersion: state.treeVersion + 1 };
-  }),
-
-  shiftCurrentVariation: (direction) => set((state) => {
-      const node = state.currentNode;
-      const parent = node.parent;
-      if (!parent) return { notification: { message: 'Select a variation to reorder.', type: 'info' } };
-
-      const idx = parent.children.findIndex((child) => child.id === node.id);
-      const targetIdx = direction === 'left' ? idx - 1 : idx + 1;
-      if (idx < 0 || targetIdx < 0 || targetIdx >= parent.children.length) {
-          return { notification: { message: 'Variation is already at that edge.', type: 'info' } };
-      }
-
-      const history = pushEditHistory(state);
-      const swap = parent.children[targetIdx]!;
-      parent.children[targetIdx] = node;
-      parent.children[idx] = swap;
-
-      return {
-          ...history,
-          treeVersion: state.treeVersion + 1,
-          notification: {
-              message: direction === 'left' ? 'Moved variation earlier.' : 'Moved variation later.',
-              type: 'success',
-          },
-      };
-  }),
-
-  findMistake: (direction) => set((state) => {
-      const node = findMistakeNavigationTarget({
-          currentNode: state.currentNode,
-          direction,
-          activeBranchChildIds: state.activeBranchChildIds,
-          threshold: state.settings.mistakeThreshold,
-      });
-      if (!node) return {};
-      return {
-          currentNode: node,
-          board: node.gameState.board,
-          currentPlayer: node.gameState.currentPlayer,
-          moveHistory: node.gameState.moveHistory,
-          capturedBlack: node.gameState.capturedBlack,
-          capturedWhite: node.gameState.capturedWhite,
-          analysisData: node.analysis || null,
-          activeBranchChildIds: rememberActiveBranchPath(state.activeBranchChildIds, node),
-      };
-  }),
-
-  deleteCurrentNode: () => set((state) => {
-      const node = state.currentNode;
-      if (!node.parent) return {};
-
-      const history = pushEditHistory(state);
-      const parent = node.parent;
-      const idx = parent.children.findIndex((c) => c.id === node.id);
-      if (idx >= 0) parent.children.splice(idx, 1);
-
-      return {
-          ...history,
-          currentNode: parent,
-          board: parent.gameState.board,
-          currentPlayer: parent.gameState.currentPlayer,
-          moveHistory: parent.gameState.moveHistory,
-          capturedBlack: parent.gameState.capturedBlack,
-          capturedWhite: parent.gameState.capturedWhite,
-          analysisData: parent.analysis || null,
-          treeVersion: state.treeVersion + 1,
-      };
-  }),
-
-  pruneCurrentBranch: () => set((state) => {
-      let removedNodes = 0;
-      let node: GameNode | null = state.currentNode;
-      while (node && node.parent) {
-          const parent: GameNode = node.parent;
-          const keptNode = node;
-          const siblings = parent.children.filter((child) => child.id !== keptNode.id);
-          removedNodes += siblings.reduce((total, child) => total + countNodes(child), 0);
-          node = parent;
-      }
-
-      if (removedNodes === 0) {
-          return { notification: { message: 'No other branches on the current line.', type: 'info' } };
-      }
-
-      const history = pushEditHistory(state);
-      node = state.currentNode;
-      while (node && node.parent) {
-          const parent: GameNode = node.parent;
-          const keptNode = node;
-          if (parent.children.length > 1) parent.children = [keptNode];
-          node = parent;
-      }
-
-      return {
-          ...history,
-          activeBranchChildIds: rememberActiveBranchPath(state.activeBranchChildIds, state.currentNode),
-          notification: {
-              message: `Kept current line and deleted ${removedNodes} other branch node${removedNodes === 1 ? '' : 's'}.`,
-              type: 'success',
-          },
-          treeVersion: state.treeVersion + 1,
-      };
-  }),
-
-  undoEdit: () => {
-      if (editUndoStack.length === 0) {
-          set({ notification: { message: 'No edit to undo.', type: 'info' } });
-          return;
-      }
-      analysisQueue.cancelWhere(() => true, 'Undo edit');
-      set((state) => {
-          const current = captureEditHistory(state);
-          const previous = editUndoStack.pop();
-          if (!previous) return editHistoryCounts();
-          editRedoStack.push(current);
-          if (editRedoStack.length > EDIT_HISTORY_LIMIT) editRedoStack.shift();
-          return {
-              ...restoreEditHistory(previous, state),
-              ...editHistoryCounts(),
-              notification: { message: 'Undid edit.', type: 'success' },
-          };
-      });
-  },
-
-  redoEdit: () => {
-      if (editRedoStack.length === 0) {
-          set({ notification: { message: 'No edit to redo.', type: 'info' } });
-          return;
-      }
-      analysisQueue.cancelWhere(() => true, 'Redo edit');
-      set((state) => {
-          const current = captureEditHistory(state);
-          const next = editRedoStack.pop();
-          if (!next) return editHistoryCounts();
-          editUndoStack.push(current);
-          if (editUndoStack.length > EDIT_HISTORY_LIMIT) editUndoStack.shift();
-          return {
-              ...restoreEditHistory(next, state),
-              ...editHistoryCounts(),
-              notification: { message: 'Redid edit.', type: 'success' },
-          };
-      });
-  },
-
-  copyCurrentBranch: () => set((state) => {
-      if (!state.currentNode.parent || !state.currentNode.move) {
-          return { notification: { message: 'Select a move branch to copy.', type: 'info' } };
-      }
-      const copiedBranch = copyBranchSnapshot(state.currentNode);
-      const nodes = countClipboardNodes(copiedBranch);
-      return {
-          copiedBranch,
-          notification: {
-              message: `Copied branch (${nodes} node${nodes === 1 ? '' : 's'}).`,
-              type: 'success',
-          },
-      };
-  }),
-
-  pasteCopiedBranch: () => set((state) => {
-      const source = state.copiedBranch;
-      if (!source) {
-          return { notification: { message: 'No copied branch to paste.', type: 'info' } };
-      }
-      const pasted = pasteBranchSnapshot(state.currentNode, source);
-      if (!pasted) {
-          return { notification: { message: 'Cannot paste branch at this position.', type: 'error' } };
-      }
-      const history = pushEditHistory(state);
-      state.currentNode.children.push(pasted);
-      // A branch replayed somewhere else can run into stones that were not
-      // there when it was copied, and pasteBranchSnapshot drops those moves
-      // along with everything under them. Count what actually landed, and say
-      // so when part of the branch did not survive the move.
-      const nodes = countNodes(pasted);
-      const copied = countClipboardNodes(source);
-      const dropped = copied - nodes;
-      return {
-          ...history,
-          currentNode: pasted,
-          board: pasted.gameState.board,
-          currentPlayer: pasted.gameState.currentPlayer,
-          moveHistory: pasted.gameState.moveHistory,
-          capturedBlack: pasted.gameState.capturedBlack,
-          capturedWhite: pasted.gameState.capturedWhite,
-          analysisData: pasted.analysis || null,
-          activeBranchChildIds: rememberActiveBranchPath(state.activeBranchChildIds, pasted),
-          treeVersion: state.treeVersion + 1,
-          notification: dropped > 0
-              ? {
-                  message: `Pasted ${nodes} of ${copied} nodes — ${dropped === 1 ? '1 move is' : `${dropped} moves are`} not legal here.`,
-                  type: 'info' as const,
-              }
-              : {
-                  message: `Pasted branch (${nodes} node${nodes === 1 ? '' : 's'}).`,
-                  type: 'success' as const,
-              },
-      };
-  }),
-
   jumpToNode: (node: GameNode) => {
     invalidateAiRequests('Navigated to node');
     return set((state) => {
@@ -2923,75 +1016,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
           activeBranchChildIds: rememberActiveBranchPath(state.activeBranchChildIds, node),
       };
     });
-  },
-
-  /* pinning removed */
-  /*
-    const node = state.currentNode;
-    if (!node.parent) {
-      return { notification: { message: 'Play or navigate to a move before pinning a line.', type: 'info' } };
-    }
-    /* removed pinned variation implementation */
-    /*
-    const path = getNodePath(node);
-    const moveNumber = getCurrentLineMoveNumber(node);
-    const coord = node.move && node.move.x >= 0 && node.move.y >= 0
-      ? `${String.fromCharCode(65 + (node.move.x >= 8 ? node.move.x + 1 : node.move.x))}${node.gameState.board.length - node.move.y}`
-      : node.move ? 'pass' : 'setup';
-    const side = node.move ? (node.move.player === 'black' ? 'B' : 'W') : '';
-    const label = `Move ${moveNumber}${side ? ` ${side} ${coord}` : ''}`;
-    const pin: PinnedVariation = {
-      id: `pin_${moveNumber}_${path.join('-')}`,
-      label,
-      path,
-      moveNumber,
-      createdAt: state.treeVersion,
-    };
-    if (state.pinnedVariations.some((p) => p.id === pin.id)) {
-      return { notification: { message: 'This line is already pinned.', type: 'info' } };
-    }
-    // Assigning the WKID root property makes pins recoverable after reloads;
-    // bump treeVersion so auto-save picks up the new property.
-    const gameId = ensurePinGameId(state.rootNode);
-    const pins = [...state.pinnedVariations, pin];
-    writeStoredPinnedVariations(gameId, pins);
-    return {
-      pinnedVariations: pins,
-      treeVersion: state.treeVersion + 1,
-      notification: { message: `Pinned ${label}.`, type: 'success' },
-    };
-  }),
-
-  recallVariation: (id: string) => {
-    const state = get();
-    const pin = state.pinnedVariations.find((p) => p.id === id);
-    if (!pin) return;
-    const node = resolveNodePath(state.rootNode, pin.path);
-    if (!node) {
-      set({ notification: { message: 'That pinned line no longer exists in this game.', type: 'error' } });
-      return;
-    }
-    get().jumpToNode(node);
-  },
-
-  unpinVariation: (id: string) => set((state) => {
-    const pins = state.pinnedVariations.filter((p) => p.id !== id);
-    writeStoredPinnedVariations(getPinGameId(state.rootNode), pins);
-    return { pinnedVariations: pins };
-  }),
-
-  clearPinnedVariations: () => set((state) => {
-    writeStoredPinnedVariations(getPinGameId(state.rootNode), []);
-    return { pinnedVariations: [] };
-  }),
-
-  */
-  navigateNextMistake: () => {
-      get().findMistake('redo');
-  },
-
-  navigatePrevMistake: () => {
-      get().findMistake('undo');
   },
 
   startNewGame: ({ komi, rules, boardSize, handicap }) => {
@@ -3042,25 +1066,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
       capturedBlack: rootState.capturedBlack,
       capturedWhite: rootState.capturedWhite,
       komi: rootState.komi,
-      boardRotation: 0,
-      regionOfInterest: null,
-      isSelectingRegionOfInterest: false,
-      isInsertMode: false,
-      insertAfterNodeId: null,
-      insertAnchorNodeId: null,
-      isEditMode: false,
-      editTool: 'setup-black',
       isAiPlaying: false,
       isAiThinking: false,
       aiColor: null,
       analysisData: null,
-      analysisCacheSize: 0,
       engineStatus: state.engineStatus,
       engineError: state.engineError,
-      timerPaused: true,
-      timerMainTimeUsedSeconds: 0,
-      timerPeriodsUsed: { black: 0, white: 0 },
-      ...clearEditHistory(),
 
       rootNode: newRoot,
       currentNode: newRoot,
@@ -3068,349 +1079,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       treeVersion: state.treeVersion + 1,
     });
   },
-
-  resetGame: () => {
-    const state = get();
-    invalidateAiRequests('Reset game');
-    analysisQueue.cancelWhere(() => true, 'Reset game');
-    analysisQueue.clearCache();
-    if (state.settings.soundEnabled) {
-        playNewGameSound();
-    }
-    const boardSize = getBoardSizeFromBoard(state.board);
-    const rootState: GameState = {
-      board: createEmptyBoard(boardSize),
-      currentPlayer: 'black',
-      moveHistory: [],
-      capturedBlack: 0,
-      capturedWhite: 0,
-      komi: 6.5,
-    };
-    const newRoot = createNode(null, null, rootState, createRootNodeId());
-    newRoot.properties = { RU: [rulesToSgfRu(state.settings.gameRules)], SZ: [String(boardSize)] };
-    set({
-      board: rootState.board,
-      currentPlayer: rootState.currentPlayer,
-      moveHistory: rootState.moveHistory,
-      capturedBlack: rootState.capturedBlack,
-      capturedWhite: rootState.capturedWhite,
-      komi: rootState.komi,
-      boardRotation: 0,
-      regionOfInterest: null,
-      isSelectingRegionOfInterest: false,
-      isInsertMode: false,
-      insertAfterNodeId: null,
-      insertAnchorNodeId: null,
-      isEditMode: false,
-      editTool: 'setup-black',
-          isAiPlaying: false,
-      isAiThinking: false,
-      aiColor: null,
-      analysisData: null,
-      analysisCacheSize: 0,
-      timerPaused: true,
-      timerMainTimeUsedSeconds: 0,
-      timerPeriodsUsed: { black: 0, white: 0 },
-      ...clearEditHistory(),
-
-      // Reset Tree
-      rootNode: newRoot,
-      currentNode: newRoot,
-      activeBranchChildIds: {},
-      treeVersion: state.treeVersion + 1,
-    });
-  },
-
-  loadGame: (sgf: ParsedSgf) => {
-    // Reset first
-    get().resetGame();
-
-    const state = get();
-    let currentBoard = sgf.initialBoard
-      ? sgf.initialBoard
-      : createEmptyBoard(state.settings.defaultBoardSize ?? DEFAULT_BOARD_SIZE);
-    const boardSize = getBoardSizeFromBoard(currentBoard);
-
-    const sgfProps = sgf.tree?.props;
-    const hasExplicitRootSetup = !!(sgfProps?.['AB']?.length || sgfProps?.['AW']?.length || sgfProps?.['AE']?.length);
-    const plRaw = sgfProps?.['PL']?.[0]?.toUpperCase();
-    const pl: Player | null = plRaw === 'B' ? 'black' : plRaw === 'W' ? 'white' : null;
-    const firstMovePlayer = sgf.moves[0]?.player;
-    const ha = parseInt(sgfProps?.['HA']?.[0] ?? '0', 10);
-    const safeHandicap = Number.isFinite(ha) ? Math.max(0, Math.min(ha, getMaxHandicap(boardSize))) : 0;
-    if (safeHandicap > 0 && !hasExplicitRootSetup) {
-      currentBoard = cloneBoard(currentBoard);
-      applyHandicapStones(currentBoard, boardSize, safeHandicap);
-    }
-    const rootPlayer: Player = pl ?? firstMovePlayer ?? (safeHandicap > 0 ? 'white' : 'black');
-    const rules = parseSgfRu(sgfProps?.['RU']?.[0]) ?? state.settings.gameRules;
-
-    const rootState: GameState = {
-      board: currentBoard,
-      currentPlayer: rootPlayer,
-      moveHistory: [],
-      capturedBlack: 0,
-      capturedWhite: 0,
-      komi: sgf.komi ?? 6.5,
-    };
-
-    const newRoot = createNode(null, null, rootState, createRootNodeId());
-    newRoot.properties = { RU: [rulesToSgfRu(rules)], SZ: [String(boardSize)] };
-    if (safeHandicap > 0) {
-      newRoot.properties.HA = [String(safeHandicap)];
-      newRoot.properties.PL = ['W'];
-      if (!hasExplicitRootSetup) syncRootSetupPropertiesFromBoard(newRoot.properties, rootState.board, boardSize, safeHandicap);
-    }
-
-    const applyKtAnalysis = (node: GameNode, kt: string[]) => {
-      const decoded = decodeKaTrainKt({ kt });
-      if (!decoded) return;
-      const analysis = kaTrainAnalysisToAnalysisResult({
-        analysis: decoded,
-        currentPlayer: node.gameState.currentPlayer,
-        boardSize,
-      });
-      if (!analysis) return;
-      node.analysis = analysis;
-      const rootInfo = decoded.root as { visits?: unknown } | null;
-      const visitsRaw = rootInfo?.visits;
-      const visits = typeof visitsRaw === 'number' && Number.isFinite(visitsRaw) ? Math.max(0, Math.floor(visitsRaw)) : 0;
-      if (visits > 0) node.analysisVisitsRequested = Math.max(node.analysisVisitsRequested ?? 0, Math.min(visits, ENGINE_MAX_VISITS));
-    };
-
-    const applyKaAnalysis = (node: GameNode, ka: string[]) => {
-      const analysis = decodeKayaKa({
-        ka,
-        currentPlayer: node.gameState.currentPlayer,
-        boardSize,
-      });
-      if (!analysis) return;
-      node.analysis = analysis;
-      const visits = typeof analysis.rootVisits === 'number' && Number.isFinite(analysis.rootVisits)
-        ? Math.max(0, Math.floor(analysis.rootVisits))
-        : 0;
-      if (visits > 0) node.analysisVisitsRequested = Math.max(node.analysisVisitsRequested ?? 0, Math.min(visits, ENGINE_MAX_VISITS));
-    };
-
-    const cloneProps = (props: Record<string, string[]> | undefined): Record<string, string[]> => {
-      const out: Record<string, string[]> = {};
-      if (!props) return out;
-      for (const [k, v] of Object.entries(props)) out[k] = [...v];
-      return out;
-    };
-
-    const sgfCoordToXy = (coord: string): { x: number; y: number } => {
-      if (!coord || coord.length < 2) return { x: -1, y: -1 };
-      if (coord === 'tt') return { x: -1, y: -1 };
-      const aCode = 'a'.charCodeAt(0);
-      const x = coord.charCodeAt(0) - aCode;
-      const y = coord.charCodeAt(1) - aCode;
-      if (x < 0 || y < 0 || x >= boardSize || y >= boardSize) return { x: -1, y: -1 };
-      return { x, y };
-    };
-
-    const extractMove = (props: Record<string, string[]>): Move | null => {
-      const b = props['B']?.[0];
-      if (typeof b === 'string') {
-        const { x, y } = sgfCoordToXy(b);
-        return { x, y, player: 'black' };
-      }
-      const w = props['W']?.[0];
-      if (typeof w === 'string') {
-        const { x, y } = sgfCoordToXy(w);
-        return { x, y, player: 'white' };
-      }
-      return null;
-    };
-
-    const applyMoveToNode = (parent: GameNode, move: Move): GameNode | null => {
-      const parentState = parent.gameState;
-      const nextPlayer: Player = move.player === 'black' ? 'white' : 'black';
-
-      if (move.x < 0 || move.y < 0) {
-        const passMove: Move = { x: -1, y: -1, player: move.player };
-        const newGameState: GameState = {
-          board: parentState.board,
-          currentPlayer: nextPlayer,
-          moveHistory: [...parentState.moveHistory, passMove],
-          capturedBlack: parentState.capturedBlack,
-          capturedWhite: parentState.capturedWhite,
-          komi: parentState.komi,
-        };
-        return createNode(parent, passMove, newGameState);
-      }
-
-      if (parentState.board[move.y]?.[move.x] !== null) return null;
-
-	      const tentativeBoard = parentState.board.map((row) => [...row]);
-	      tentativeBoard[move.y]![move.x] = move.player;
-	      const captured = applyCapturesInPlace(tentativeBoard, move.x, move.y, move.player);
-	      const newBoard = tentativeBoard;
-
-      if (captured.length === 0) {
-        const { liberties } = getLiberties(newBoard, move.x, move.y);
-        if (liberties === 0) return null;
-      }
-
-      if (parent.parent && boardsEqual(newBoard, parent.parent.gameState.board)) {
-        return null;
-      }
-
-      const newCapturedBlack = parentState.capturedBlack + (move.player === 'white' ? captured.length : 0);
-      const newCapturedWhite = parentState.capturedWhite + (move.player === 'black' ? captured.length : 0);
-
-      const newMove: Move = { x: move.x, y: move.y, player: move.player };
-      const newGameState: GameState = {
-        board: newBoard,
-        currentPlayer: nextPlayer,
-        moveHistory: [...parentState.moveHistory, newMove],
-        capturedBlack: newCapturedBlack,
-        capturedWhite: newCapturedWhite,
-        komi: parentState.komi,
-      };
-      return createNode(parent, newMove, newGameState);
-    };
-
-    if (sgf.tree) {
-      const rootPropsCopy = cloneProps(sgf.tree.props);
-      delete rootPropsCopy.B;
-      delete rootPropsCopy.W;
-      const rootNote = extractKaTrainUserNoteFromSgfComment(rootPropsCopy['C']);
-      if (rootNote) newRoot.note = rootNote;
-      delete rootPropsCopy['C'];
-      if (!rootPropsCopy['RU']?.length) rootPropsCopy['RU'] = [rulesToSgfRu(rules)];
-      if (!rootPropsCopy['SZ']?.length) rootPropsCopy['SZ'] = [String(boardSize)];
-      if (safeHandicap > 0) {
-        rootPropsCopy['HA'] = [String(safeHandicap)];
-        if (!rootPropsCopy['PL']?.length) rootPropsCopy['PL'] = ['W'];
-        if (!hasExplicitRootSetup) syncRootSetupPropertiesFromBoard(rootPropsCopy, rootState.board, boardSize, safeHandicap);
-      }
-      newRoot.properties = rootPropsCopy;
-      const rootMove = extractMove(sgf.tree.props);
-      if (!rootMove && sgf.tree.props['KT'] && !newRoot.analysis) {
-        applyKtAnalysis(newRoot, sgf.tree.props['KT']);
-      }
-      if (!rootMove && sgf.tree.props['KA'] && !newRoot.analysis) {
-        applyKaAnalysis(newRoot, sgf.tree.props['KA']);
-      }
-
-      const buildFromSgfNode = (parent: GameNode, node: NonNullable<ParsedSgf['tree']>) => {
-        const move = extractMove(node.props);
-        if (!move) {
-          const note = extractKaTrainUserNoteFromSgfComment(node.props['C']);
-          const propsNoComments = cloneProps(node.props);
-          delete propsNoComments['C'];
-          const hasAnalysis = !!(node.props['KT']?.length || node.props['KA']?.length);
-          const hasContent = Object.keys(propsNoComments).length > 0 || !!note || hasAnalysis;
-          if (!hasContent) {
-            for (const child of node.children) buildFromSgfNode(parent, child);
-            return;
-          }
-
-          const childNode = createNode(parent, null, cloneGameState(parent.gameState));
-          childNode.properties = propsNoComments;
-          if (note) childNode.note = note;
-          const rebuiltState = replayChildMove(parent, childNode);
-          childNode.gameState = rebuiltState ?? childNode.gameState;
-          if (node.props['KT'] && !childNode.analysis) {
-            applyKtAnalysis(childNode, node.props['KT']);
-          }
-          if (node.props['KA'] && !childNode.analysis) {
-            applyKaAnalysis(childNode, node.props['KA']);
-          }
-          parent.children.push(childNode);
-          for (const child of node.children) buildFromSgfNode(childNode, child);
-          return;
-        }
-
-        const childNode = applyMoveToNode(parent, move);
-        if (!childNode) return;
-        childNode.properties = cloneProps(node.props);
-        applySetupPropsToNode(childNode, childNode.properties, boardSize);
-        applySgfPlayerToMoveToNode(childNode, childNode.properties);
-        const nodeNote = extractKaTrainUserNoteFromSgfComment(childNode.properties['C']);
-        if (nodeNote) childNode.note = nodeNote;
-        delete childNode.properties['C'];
-        if (node.props['KT'] && !childNode.analysis) {
-          applyKtAnalysis(childNode, node.props['KT']);
-        }
-        if (node.props['KA'] && !childNode.analysis) {
-          applyKaAnalysis(childNode, node.props['KA']);
-        }
-        parent.children.push(childNode);
-
-        for (const child of node.children) buildFromSgfNode(childNode, child);
-      };
-
-      if (rootMove) {
-        const first = applyMoveToNode(newRoot, rootMove);
-        if (first) {
-          first.properties = cloneProps(sgf.tree.props);
-          applySetupPropsToNode(first, first.properties, boardSize);
-          applySgfPlayerToMoveToNode(first, first.properties);
-          const firstNote = extractKaTrainUserNoteFromSgfComment(first.properties['C']);
-          if (firstNote) first.note = firstNote;
-          delete first.properties['C'];
-          if (sgf.tree.props['KT'] && !first.analysis) {
-            applyKtAnalysis(first, sgf.tree.props['KT']);
-          }
-          if (sgf.tree.props['KA'] && !first.analysis) {
-            applyKaAnalysis(first, sgf.tree.props['KA']);
-          }
-          newRoot.children.push(first);
-          for (const child of sgf.tree.children) buildFromSgfNode(first, child);
-        }
-      } else {
-        for (const child of sgf.tree.children) buildFromSgfNode(newRoot, child);
-      }
-    } else {
-      // Legacy: just the main line (no SGF tree provided)
-      let cursor: GameNode = newRoot;
-      for (const mv of sgf.moves) {
-        const child = applyMoveToNode(cursor, { x: mv.x, y: mv.y, player: mv.player });
-        if (!child) break;
-        cursor.children.push(child);
-        cursor = child;
-      }
-    }
-
-    const rootPropsForNavigation = newRoot.properties ?? {};
-    const hasMarkersAtRoot = !!(
-      rootPropsForNavigation.MA?.length ||
-      rootPropsForNavigation.TR?.length ||
-      rootPropsForNavigation.CR?.length ||
-      rootPropsForNavigation.SQ?.length ||
-      rootPropsForNavigation.LB?.length
-    );
-    const isProblemCollection = newRoot.children.length > 3 && !newRoot.move && !hasMarkersAtRoot;
-    const rewind = get().settings.loadSgfRewind;
-    let current = newRoot;
-    if (isProblemCollection) {
-      current = newRoot.children[0]!;
-    } else if (!rewind) {
-      while (current.children.length > 0) current = current.children[0]!;
-    }
-
-    set((state) => ({
-      rootNode: newRoot,
-      currentNode: current,
-      activeBranchChildIds: rememberActiveBranchPath({}, current),
-      board: current.gameState.board,
-      currentPlayer: current.gameState.currentPlayer,
-      moveHistory: current.gameState.moveHistory,
-      capturedBlack: current.gameState.capturedBlack,
-      capturedWhite: current.gameState.capturedWhite,
-      komi: rootState.komi,
-      boardRotation: 0,
-      isEditMode: false,
-      editTool: state.editTool,
-      analysisData: current.analysis || null,
-      analysisCacheSize: getAnalysisCacheSize(newRoot),
-	      treeVersion: state.treeVersion + 1,
-	      settings: { ...state.settings, gameRules: rules, defaultBoardSize: boardSize, defaultHandicap: safeHandicap },
-		    }));
-
-		  },
 
   passTurn: () => {
       invalidateAiRequests('Position changed by pass');
@@ -3465,77 +1133,4 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
   },
 
-  resign: (player) => {
-    invalidateAiRequests('Game resigned');
-    const state = get();
-    const endState = getResignResult(player ?? state.currentPlayer);
-    state.currentNode.endState = endState;
-
-    if (!state.rootNode.properties) state.rootNode.properties = {};
-    state.rootNode.properties.RE = [endState];
-
-
-    set((s) => ({
-      isAiPlaying: false,
-      isAiThinking: false,
-      aiColor: null,
-      treeVersion: s.treeVersion + 1,
-    }));
-  },
-
-  rotateBoard: () =>
-    set((state) => ({
-      boardRotation: (((state.boardRotation ?? 0) + 1) % 4) as 0 | 1 | 2 | 3,
-    })),
 }));
-
-let notificationAutoDismissTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
-// The store field is the single visible slot; this holds what is waiting behind
-// it. Call sites keep writing `notification` directly and this subscriber acts
-// as the funnel, so an error is never pushed off screen by the next "Added
-// label" confirmation before it can be read or copied.
-let notificationState = emptyNotificationQueue<StoreNotification>();
-
-const showNotification = (next: StoreNotification | null) => {
-  // Marks the write as ours so the subscriber does not treat it as an arrival.
-  notificationState = { ...notificationState, displayed: next };
-  useGameStore.setState({ notification: next });
-};
-
-const scheduleNotificationDismiss = () => {
-  if (notificationAutoDismissTimer) {
-    globalThis.clearTimeout(notificationAutoDismissTimer);
-    notificationAutoDismissTimer = null;
-  }
-  const notification = notificationState.displayed;
-  const delay = autoDismissDelay(notification);
-  if (!notification || delay === null) return;
-  notificationAutoDismissTimer = globalThis.setTimeout(() => {
-    if (notificationState.displayed !== notification) return;
-    notificationState = dismissNotification(notificationState);
-    showNotification(notificationState.displayed);
-    scheduleNotificationDismiss();
-  }, delay);
-};
-
-useGameStore.subscribe((state, previousState) => {
-  if (state.notification === previousState.notification) return;
-  if (state.notification === notificationState.displayed) return; // our own write
-
-  if (state.notification === null) {
-    // Dismissed from the UI — promote whatever was waiting behind it.
-    notificationState = dismissNotification(notificationState);
-    if (notificationState.displayed) showNotification(notificationState.displayed);
-  } else {
-    notificationState = admitNotification(notificationState, state.notification);
-    // An arrival behind an error must not be left showing in the slot.
-    if (state.notification !== notificationState.displayed) showNotification(notificationState.displayed);
-  }
-  scheduleNotificationDismiss();
-});
-
-analysisQueue.subscribeCacheSize((queueCacheSize) => {
-  useGameStore.setState((state) => ({
-    analysisCacheSize: Math.max(countAnalyzedNodes(state.rootNode), queueCacheSize),
-  }));
-});

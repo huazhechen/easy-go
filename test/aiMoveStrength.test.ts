@@ -42,7 +42,7 @@ describe('AI move strength settings', () => {
   it('disables root noise and NN randomization for actual AI moves', async () => {
     const { useGameStore } = await import('../src/store/gameStore');
     const store = useGameStore.getState();
-    store.resetGame();
+    store.startNewGame({ komi: 6.5, rules: 'japanese', boardSize: 19, handicap: 0 });
 
     useGameStore.setState((state) => ({
       isAiPlaying: true,
@@ -70,7 +70,7 @@ describe('AI move strength settings', () => {
       player: 'black',
     }));
 
-    useGameStore.getState().stopAnalysis();
-    useGameStore.getState().resetGame();
+    useGameStore.getState().toggleContinuousAnalysis(false);
+    useGameStore.getState().startNewGame({ komi: 6.5, rules: 'japanese', boardSize: 19, handicap: 0 });
   });
 });

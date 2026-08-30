@@ -74,50 +74,15 @@ export interface AnalysisResult {
 
 export type RegionOfInterest = { xMin: number; xMax: number; yMin: number; yMax: number };
 
-export type EditTool =
-  | 'setup-black'
-  | 'setup-white'
-  | 'setup-alternate'
-  | 'setup-erase'
-  | 'marker-triangle'
-  | 'marker-square'
-  | 'marker-circle'
-  | 'marker-cross'
-  | 'label-alpha'
-  | 'label-number'
-  | 'marker-erase'
-  | 'markup-arrow'
-  | 'markup-line'
-  | 'draw-pen'
-  | 'draw-highlight'
-  | 'region-count'
-  | 'region-score';
-
-// Freehand strokes drawn over the board. Points are internal board units
-// (fractional intersections) so strokes survive resize and rotation.
-// Session-only: never serialized to SGF.
-export type BoardDrawingKind = 'pen' | 'highlight';
-export interface BoardDrawing {
-  kind: BoardDrawingKind;
-  points: Array<{ x: number; y: number }>;
-}
-
 export interface GameNode {
   id: string;
   parent: GameNode | null;
   children: GameNode[];
   move: Move | null;
   gameState: GameState;
-  endState?: string | null; // KaTrain-like: e.g. "B+R" for resignation, applied at this node.
-  timeUsedSeconds?: number; // KaTrain-like: time used on this move (for timer/byo-yomi).
   analysis?: AnalysisResult | null;
   analysisVisitsRequested?: number; // KaTrain-like: requested visits for this node analysis.
-  autoUndo?: boolean | null; // Teach-mode auto-undo (KaTrain-like). null = not decided yet.
-  undoThreshold?: number; // Random [0,1) used for fractional auto-undos.
-  aiThoughts?: string;
-  note?: string; // User-editable note (SGF C), KaTrain-style.
   properties?: Record<string, string[]>;
-  drawings?: BoardDrawing[]; // Freehand pen/highlight strokes, session-only.
 }
 
 export type AppLocaleId = 'en' | 'zh' | 'zh-TW' | 'ko' | 'ja' | 'fr' | 'de' | 'es' | 'it' | 'uk' | 'ru' | 'pt' | 'vi';
@@ -127,10 +92,7 @@ export interface GameSettings {
   soundEnabled: boolean;
   defaultBoardSize: BoardSize;
   defaultHandicap: number;
-  mistakeThreshold: number; // Points lost to consider a mistake for navigation/highlights.
-  loadSgfRewind: boolean; // KaTrain general/load_sgf_rewind
   gameRules: GameRules; // KataGo rules preset (KaTrain default: japanese)
-  trainerEvalThresholds: number[]; // KaTrain trainer/eval_thresholds
   analysisShowChildren: boolean; // Q
   analysisShowEval: boolean; // W
   analysisShowHints: boolean; // E
@@ -151,5 +113,4 @@ export interface GameSettings {
   katagoNnRandomize: boolean; // KataGo nnRandomize (random symmetries)
   katagoConservativePass: boolean; // KataGo conservativePass (KaTrain default: true)
   katagoFillDameBeforePass: boolean; // KataGo fillDameBeforePass, territory scoring only
-  teachNumUndoPrompts: number[]; // KaTrain trainer/num_undo_prompts
 }

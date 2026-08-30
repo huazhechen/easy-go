@@ -1,7 +1,7 @@
-function getBrowserStorage(name: 'localStorage' | 'sessionStorage'): Storage | null {
+function getBrowserStorage(): Storage | null {
   try {
-    if (typeof window !== 'undefined') return window[name] ?? null;
-    const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
+    if (typeof window !== 'undefined') return window.localStorage ?? null;
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
     if (!descriptor || !('value' in descriptor)) return null;
     return (descriptor.value as Storage | undefined) ?? null;
   } catch {
@@ -10,11 +10,7 @@ function getBrowserStorage(name: 'localStorage' | 'sessionStorage'): Storage | n
 }
 
 export function getLocalStorage(): Storage | null {
-  return getBrowserStorage('localStorage');
-}
-
-export function getSessionStorage(): Storage | null {
-  return getBrowserStorage('sessionStorage');
+  return getBrowserStorage();
 }
 
 export function readLocalStorage(key: string): string | null {

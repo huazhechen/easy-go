@@ -42,7 +42,7 @@ describe('analysis position keys', () => {
 
   it('does not reuse the literal root id for fresh roots', () => {
     const store = useGameStore.getState();
-    store.resetGame();
+    store.startNewGame({ komi: 6.5, rules: 'japanese', boardSize: 19, handicap: 0 });
     expect(useGameStore.getState().rootNode.id).toMatch(/^root-/);
     expect(useGameStore.getState().rootNode.id).not.toBe('root');
   });

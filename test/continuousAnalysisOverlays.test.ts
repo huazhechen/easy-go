@@ -40,7 +40,6 @@ describe('turning on continuous analysis', () => {
       isAiPlaying: false,
       isAiThinking: false,
       aiColor: null,
-      notification: null,
       runAnalysis: vi.fn(pendingAnalysis),
     });
   });
@@ -49,7 +48,6 @@ describe('turning on continuous analysis', () => {
     useGameStore.setState({
       isContinuousAnalysis: false,
       isAnalysisMode: false,
-      notification: null,
       runAnalysis: realRunAnalysis,
     });
     vi.runOnlyPendingTimers();
