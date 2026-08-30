@@ -64,11 +64,6 @@ function versionMetadataPlugin(): Plugin {
 export default defineConfig({
   base,
   plugins: [react(), tailwindcss(), versionMetadataPlugin()],
-  define: {
-    __APP_VERSION__: JSON.stringify(appVersion),
-    __APP_COMMIT__: JSON.stringify(appCommit),
-    __APP_COMMIT_DATE__: JSON.stringify(appCommitDate),
-  },
   build: {
     rollupOptions: {
       input: {
