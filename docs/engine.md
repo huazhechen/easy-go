@@ -36,8 +36,9 @@ The app ships three locally-hosted model tiers under `public/models/`:
 上的秒数，不再显示 M 数。
 新对局开始时使用当前档位所选时间作为 AI 每步思考上限。下载进度条使用
 真实字节大小（压缩/解压后按实际收到的字节显示），不再写死 96M。
-推荐落点/持续分析刻意使用写死的超大预算（5000 访问 / 60 秒），不随档位
-或思考时间变化。
+推荐落点/持续分析使用独立的连续搜索预算：从 32 次访问起步、逐轮增长到
+16,384 次上限，单轮搜索最多 1 秒、同一局面累计最多 5 分钟，不随档位或
+思考时间变化。推荐提示关闭且 AI 不在思考时，持续搜索会暂停以省电。
 
 The default tier is B10. B6 and B10 are both warmed into the local IndexedDB
 cache (`easy-go-model-cache`); when B10 is not in the cache yet the app starts
