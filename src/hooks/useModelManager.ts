@@ -11,25 +11,17 @@ import {
   type KataGoModelTierId,
 } from '../engine/katago/modelDefaults';
 import {
-  downloadModelChunks,
-  downloadModelWithProgress,
   ensureTierModelCached,
   isTierModelCached,
-  modelCacheKeyForTier,
-  normalizeModelBytes,
-  objectUrlForModelBytes,
   pruneModelCache,
   resolveTierModelUrl,
-  verifyModelMd5,
-  writeCachedModel,
 } from '../engine/katago/modelCache';
-import { publicUrl } from '../utils/publicUrl';
 import { readLocalStorage, writeLocalStorage } from '../utils/storage';
+import { publicUrl } from '../utils/publicUrl';
+import { useModelDownload } from './useModelDownload';
 
 const MODEL_TIER_STORAGE_KEY = 'easy-go:model-tier';
 const THINKING_STORAGE_KEY = 'easy-go:model-thinking-ms';
-
-export type DownloadPhase = 'confirm' | 'downloading' | 'done' | 'error';
 
 // Per-tier thinking time is stored independently, so choosing 10s on B6 never
 // changes what is selected on B10 or B18.
@@ -64,16 +56,18 @@ export function useModelManager(notify: (message: string) => void) {
     return isKnownModelTierId(stored) ? stored : DEFAULT_MODEL_TIER_ID;
   });
   const [thinkingMsByTier, setThinkingMsByTier] = useState<Record<KataGoModelTierId, number>>(readStoredThinkingMs);
-  const [showModelDownload, setShowModelDownload] = useState(false);
-  const [showForceRedownload, setShowForceRedownload] = useState(false);
-  const [downloadPhase, setDownloadPhase] = useState<DownloadPhase>('confirm');
-  const [downloadProgress, setDownloadProgress] = useState({ loaded: 0, total: 0 });
-  const [downloadError, setDownloadError] = useState('');
-  const downloadAbortRef = useRef<AbortController | null>(null);
   const b18BlobUrlRef = useRef<string | null>(null);
   const backgroundWarmRef = useRef<Promise<void> | null>(null);
   const b10PendingUpgradeRef = useRef(false);
   const selectedTierRef = useRef<KataGoModelTierId>(DEFAULT_MODEL_TIER_ID);
+  const download = useModelDownload((blobUrl) => {
+    if (b18BlobUrlRef.current) URL.revokeObjectURL(b18BlobUrlRef.current);
+    b18BlobUrlRef.current = blobUrl;
+    setSelectedModelTier('b18');
+    writeLocalStorage(MODEL_TIER_STORAGE_KEY, 'b18');
+    const state = useGameStore.getState();
+    if (state.settings.katagoModelUrl !== blobUrl) state.updateSettings({ katagoModelUrl: blobUrl });
+  });
 
   useEffect(() => {
     selectedTierRef.current = selectedModelTier;
@@ -170,7 +164,6 @@ export function useModelManager(notify: (message: string) => void) {
 
   useEffect(
     () => () => {
-      downloadAbortRef.current?.abort();
       if (b18BlobUrlRef.current) URL.revokeObjectURL(b18BlobUrlRef.current);
     },
     []
@@ -180,7 +173,7 @@ export function useModelManager(notify: (message: string) => void) {
     if (tierId === selectedModelTier) {
       // B18 is already downloaded and selected: clicking it again offers a
       // forced re-download instead of silently doing nothing.
-      if (tierId === 'b18') setShowForceRedownload(true);
+      if (tierId === 'b18') download.setShowForceRedownload(true);
       return true;
     }
     const tier = getModelTier(tierId);
@@ -190,10 +183,8 @@ export function useModelManager(notify: (message: string) => void) {
     if (tierId === 'b18') {
       url = b18BlobUrlRef.current ?? (await resolveTierModelUrl('b18'));
       if (!url) {
-        setDownloadPhase('confirm');
-        setDownloadProgress({ loaded: 0, total: 0 });
-        setDownloadError('');
-        setShowModelDownload(true);
+        download.resetDownload();
+        download.setShowModelDownload(true);
         return false;
       }
       b18BlobUrlRef.current = url;
@@ -239,89 +230,16 @@ export function useModelManager(notify: (message: string) => void) {
     return true;
   };
 
-  const startModelDownload = async () => {
-    const tier = getModelTier('b18');
-    if (!tier) return;
-    const controller = new AbortController();
-    downloadAbortRef.current = controller;
-    setDownloadPhase('downloading');
-    setDownloadProgress({ loaded: 0, total: 0 });
-    setDownloadError('');
-    try {
-      // The model is hosted on this site as ≤24 MiB chunks (so Cloudflare's
-      // 25 MiB per-file limit can serve it); fetch them in order, concatenate,
-      // then normalize and checksum the result before caching.
-      const buffer =
-        tier.chunks && tier.chunks.length > 0
-          ? await downloadModelChunks(
-              tier.chunks.map((chunk) => ({ url: publicUrl(chunk.path), bytes: chunk.bytes })),
-              (loaded, total) => setDownloadProgress({ loaded, total }),
-              controller.signal
-            )
-          : await downloadModelWithProgress(
-              publicUrl(tier.localPath),
-              (loaded, total) => setDownloadProgress({ loaded, total }),
-              controller.signal,
-              tier.decompressedBytes
-            );
-      // Hosts may transparently decompress the .gz response, so normalize to
-      // the .bin bytes before checksumming and caching.
-      const normalized = normalizeModelBytes(new Uint8Array(buffer));
-      if (!verifyModelMd5(normalized, tier.md5)) {
-        throw new Error('模型校验失败：下载内容与官方 MD5 不一致，请重试');
-      }
-      const cached = await writeCachedModel(modelCacheKeyForTier('b18'), normalized);
-      const blobUrl = objectUrlForModelBytes(normalized);
-      if (b18BlobUrlRef.current) URL.revokeObjectURL(b18BlobUrlRef.current);
-      b18BlobUrlRef.current = blobUrl;
-      setSelectedModelTier('b18');
-      writeLocalStorage(MODEL_TIER_STORAGE_KEY, 'b18');
-      const state = useGameStore.getState();
-      if (state.settings.katagoModelUrl !== blobUrl) state.updateSettings({ katagoModelUrl: blobUrl });
-      setDownloadPhase('done');
-      if (!cached) setDownloadError('模型已下载，但未能写入本地缓存，本次会话仍可使用。');
-    } catch (err) {
-      if (controller.signal.aborted) {
-        setDownloadPhase('confirm');
-      } else {
-        setDownloadPhase('error');
-        setDownloadError(err instanceof Error ? err.message : String(err));
-      }
-    } finally {
-      downloadAbortRef.current = null;
-    }
-  };
-
-  const cancelModelDownload = () => {
-    downloadAbortRef.current?.abort();
-    setShowModelDownload(false);
-  };
-
-  const downloadPercent = (): number => {
-    if (downloadPhase !== 'downloading') return downloadProgress.loaded > 0 ? 100 : 0;
-    if (downloadProgress.total > 0) return Math.min(100, Math.round((downloadProgress.loaded / downloadProgress.total) * 100));
-    return downloadProgress.loaded > 0 ? 100 : 0;
-  };
-
   const selectedModelTierConfig = getModelTier(selectedModelTier);
   const thinkingMs = thinkingMsByTier[selectedModelTier] ?? defaultThinkingForTier(selectedModelTierConfig);
   const selectedModelLabel = selectedModelTierConfig?.label ?? selectedModelTier;
 
   return {
+    ...download,
     selectedModelTier,
     selectedModelLabel,
     thinkingMs,
     thinkingMsByTier,
-    showModelDownload,
-    setShowModelDownload,
-    showForceRedownload,
-    setShowForceRedownload,
-    downloadPhase,
-    downloadProgress,
-    downloadError,
     confirmModelSelection,
-    startModelDownload,
-    cancelModelDownload,
-    downloadPercent,
   };
 }

@@ -1,4 +1,4 @@
-import type { DownloadPhase } from '../../hooks/useModelManager';
+import type { DownloadPhase } from '../../hooks/useModelDownload';
 import { formatModelBytes } from '../../utils/format';
 
 interface ModelDownloadDialogProps {
