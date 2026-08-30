@@ -4,7 +4,6 @@ import * as tf from '@tensorflow/tfjs';
 import '@tensorflow/tfjs-backend-webgpu';
 import '@tensorflow/tfjs-backend-wasm';
 import { setThreadsCount, setWasmPaths } from '@tensorflow/tfjs-backend-wasm';
-import pako from 'pako';
 
 import type { KataGoAnalyzeRequest, KataGoWorkerRequest, KataGoWorkerResponse } from './types';
 import { looksLikeMarkup, modelResponseError } from './modelResponse';
@@ -24,6 +23,18 @@ import {
 import { BOARD_AREA, BOARD_SIZE, PASS_MOVE, setBoardSize } from './fastBoard';
 import { postprocessKataGoV8 } from './evalV8';
 import { humanSlMetadataRow } from './humanSlProfile';
+import { md5Hex } from '../../utils/md5';
+import {
+  expectedModelMd5,
+  KATAGO_MODEL_TIERS,
+  KATAGO_SMALL_MODEL_PATH,
+} from './modelDefaults';
+import {
+  modelCacheKeyForUrl,
+  normalizeModelBytes,
+  readValidatedCachedModel,
+  writeCachedModel,
+} from './modelCache';
 
 let model: KataGoModelV8Tf | null = null;
 let loadedModelName: string | undefined;
@@ -34,6 +45,15 @@ let backendPromise: Promise<void> | null = null;
 let backendPreference: KataGoBackendPreference | null = null;
 let prodModeEnabled = false;
 let queue: Promise<void> = Promise.resolve();
+let lastRequestedModelUrl: string | null = null;
+let backgroundModelUpgrade: Promise<void> | null = null;
+
+const B6_MODEL_URL = publicUrl(KATAGO_SMALL_MODEL_PATH);
+const B10_TIER = KATAGO_MODEL_TIERS.find((tier) => tier.id === 'b10');
+const B10_MODEL_URLS: string[] = B10_TIER
+  ? [publicUrl(B10_TIER.localPath), ...(B10_TIER.remoteUrl ? [B10_TIER.remoteUrl] : [])]
+  : [];
+const isDefaultB10ModelUrl = (url: string): boolean => B10_MODEL_URLS.includes(url);
 
 let V7_SPATIAL_STRIDE = BOARD_AREA * 22;
 const V7_GLOBAL_STRIDE = 19;
@@ -153,13 +173,6 @@ async function initBackend(preferredBackend: KataGoBackendPreference): Promise<v
   await initWasmBackend();
 }
 
-function maybeUngzip(data: Uint8Array): Uint8Array {
-  // gzip magic bytes 0x1f8b
-  if (data.length >= 2 && data[0] === 0x1f && data[1] === 0x8b) return pako.ungzip(data);
-  return data;
-}
-
-
 async function ensureBackend(backend?: KataGoBackendPreference): Promise<void> {
   const preferredBackend = normalizeKataGoBackendPreference(backend);
   if (backendPromise && backendPreference === preferredBackend) {
@@ -240,17 +253,41 @@ async function switchToFallbackBackendForRequest(
   }
 }
 
-async function ensureModel(modelUrl: string, backend?: KataGoBackendPreference): Promise<void> {
-  const requestedBackend = normalizeKataGoBackendPreference(backend);
-  await ensureBackend(requestedBackend);
-  if (model && loadedModelUrl === modelUrl) return;
+/**
+ * Fetches the model bytes, preferring the IndexedDB cache so a model that was
+ * already downloaded once is never fetched again unless the cache version
+ * changes. blob: URLs (a cached b18 served through an object URL) are already
+ * in-memory and are deliberately not written back to the cache.
+ */
+async function fetchModelBytes(modelUrl: string): Promise<Uint8Array> {
+  const cacheKey = modelCacheKeyForUrl(modelUrl);
+  const expectedMd5 = expectedModelMd5(modelUrl);
+  const cached = await readValidatedCachedModel(cacheKey, expectedMd5);
+  if (cached) {
+    const bytes = new Uint8Array(cached);
+    if (!looksLikeMarkup(bytes)) return bytes;
+  }
 
   const res = await fetch(modelUrl);
   if (!res.ok) throw new Error(`Failed to fetch model: ${res.status} ${res.statusText}`);
-  const buf = new Uint8Array(await res.arrayBuffer());
-  if (looksLikeMarkup(buf)) throw modelResponseError(modelUrl);
-  const data = maybeUngzip(buf);
+  const data = normalizeModelBytes(new Uint8Array(await res.arrayBuffer()));
+  if (looksLikeMarkup(data)) throw modelResponseError(modelUrl);
+  if (expectedMd5) {
+    if (md5Hex(data) !== expectedMd5.toLowerCase()) {
+      throw new Error(`Model checksum mismatch for ${modelUrl}: expected MD5 ${expectedMd5}`);
+    }
+  }
+  if (!modelUrl.startsWith('blob:')) {
+    await writeCachedModel(cacheKey, data);
+  }
+  return data;
+}
 
+async function loadAndInstallModel(
+  modelUrl: string,
+  requestedBackend: KataGoBackendPreference
+): Promise<void> {
+  const data = await fetchModelBytes(modelUrl);
   const parsed = parseKataGoModelV8(data);
   const attemptedFallbacks = new Set<KataGoBackendPreference>();
   while (true) {
@@ -274,6 +311,76 @@ async function ensureModel(modelUrl: string, backend?: KataGoBackendPreference):
 }
 
 /**
+ * Fetches, parses and warms the default b10 model in the background without
+ * blocking the request queue. Once ready it is installed between queue tasks,
+ * silently replacing the b6 fallback the user has been playing on.
+ */
+function scheduleBackgroundModelUpgrade(): void {
+  if (backgroundModelUpgrade || B10_MODEL_URLS.length === 0) return;
+  backgroundModelUpgrade = (async () => {
+    let targetUrl: string | null = null;
+    let parsed: ParsedKataGoModelV8 | null = null;
+    for (const url of B10_MODEL_URLS) {
+      try {
+        parsed = parseKataGoModelV8(await fetchModelBytes(url));
+        targetUrl = url;
+        break;
+      } catch {
+        // Try the next source (local file, then the remote mirror).
+      }
+    }
+    if (!parsed || !targetUrl) return;
+
+    let candidate: KataGoModelV8Tf | null = null;
+    try {
+      candidate = await createWarmedModel(parsed);
+      const modelToInstall = candidate;
+      const urlToInstall = targetUrl;
+      queue = queue
+        .then(() => {
+          // Only replace when the user is still on b10 (they may have switched
+          // to b6 or started downloading b18 while the upgrade was running).
+          if (lastRequestedModelUrl !== null && isDefaultB10ModelUrl(lastRequestedModelUrl)) {
+            installModel(modelToInstall, parsed!, urlToInstall);
+          } else {
+            modelToInstall.dispose();
+          }
+        })
+        .catch(() => modelToInstall.dispose());
+    } catch {
+      candidate?.dispose();
+    } finally {
+      backgroundModelUpgrade = null;
+    }
+  })();
+}
+
+async function ensureModel(modelUrl: string, backend?: KataGoBackendPreference): Promise<void> {
+  const requestedBackend = normalizeKataGoBackendPreference(backend);
+  await ensureBackend(requestedBackend);
+  if (
+    model &&
+    (loadedModelUrl === modelUrl ||
+      // The local and remote b10 files are the same network, so once either is
+      // installed a request for the other counts as satisfied.
+      (isDefaultB10ModelUrl(modelUrl) && loadedModelUrl !== null && isDefaultB10ModelUrl(loadedModelUrl)))
+  ) {
+    return;
+  }
+  lastRequestedModelUrl = modelUrl;
+
+  try {
+    await loadAndInstallModel(modelUrl, requestedBackend);
+  } catch (err) {
+    if (!isDefaultB10ModelUrl(modelUrl)) throw err;
+    // The local b10 is not available yet. Serve b6 immediately and fetch b10
+    // in the background so the stronger default replaces it silently when ready.
+    await loadAndInstallModel(B6_MODEL_URL, requestedBackend);
+    scheduleBackgroundModelUpgrade();
+  }
+}
+
+/**
  * Loads KataGo's human SL net, which is a second network used only to predict how a
  * human of a given rank would move. It is kept separate from the main model: the
  * analysis itself always comes from the strong net.
@@ -285,7 +392,7 @@ async function ensureHumanModel(modelUrl: string): Promise<KataGoModelV8Tf> {
   if (!res.ok) throw new Error(`Failed to fetch human model: ${res.status} ${res.statusText}`);
   const buf = new Uint8Array(await res.arrayBuffer());
   if (looksLikeMarkup(buf)) throw modelResponseError(modelUrl);
-  const parsed = parseKataGoModelV8(maybeUngzip(buf));
+  const parsed = parseKataGoModelV8(normalizeModelBytes(buf));
   if (parsed.metaEncoderVersion !== 1) {
     throw new Error('That model is not a human SL net (it has no metadata encoder)');
   }

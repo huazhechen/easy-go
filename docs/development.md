@@ -27,11 +27,10 @@ The Vite dev server sends the COOP/COEP headers required for threaded WASM.
 | `npm run dev` | Start Vite. Runs `copy:tfjs-wasm` and `fetch:model` first. |
 | `npm test` | Run all Vitest tests. |
 | `npm run test:typecheck` | Type-check the test project. |
-| `npm run test:viewport` | Build, serve, and smoke-test key desktop/mobile viewports in Chrome. |
 | `npm run lint` | Run ESLint. |
 | `npm run build` | Run `tsc -b` and build Vite output into `dist/`. |
 | `npm run preview` | Serve `dist/` locally with preview headers. |
-| `npm run fetch:model` | Ensure `public/models/katago-small.bin.gz` exists. |
+| `npm run fetch:model` | Ensure the locally-hosted model tiers exist (`katago-small.bin.gz`, `katago-b10.bin.gz`, `katago-b18.bin.gz`). |
 | `npm run copy:tfjs-wasm` | Copy TensorFlow.js WASM binaries into `public/tfjs/`. |
 | `npm run audit` | Run `npm audit --audit-level=moderate`. |
 
@@ -42,9 +41,9 @@ The Vite dev server sends the COOP/COEP headers required for threaded WASM.
 | `src/components/` | React UI, modals, dashboard, board, panels, and layout controls. |
 | `src/store/gameStore.ts` | Global game state and actions. |
 | `src/engine/katago/` | Browser KataGo parser, TensorFlow.js model, worker, search, and board logic. |
-| `src/utils/` | SGF, storage, library, analysis helpers, PWA, shortcuts, board themes, and UI utilities. |
+| `src/utils/` | SGF, storage, library, analysis helpers, PWA, shortcuts, and UI utilities. |
 | `src/data/` | Bundled SGF games. |
-| `public/` | Static assets, PWA files, board themes, model files, and service worker. |
+| `public/` | Static assets and model files. |
 | `scripts/` | Model/WASM setup and viewport checks. |
 | `test/` | Vitest unit and component tests. |
 | `docs/` | Project documentation. |
@@ -53,20 +52,26 @@ The Vite dev server sends the COOP/COEP headers required for threaded WASM.
 
 Normal dev and build commands keep two generated asset groups ready:
 
-- `public/models/katago-small.bin.gz`: a small KataGo test model.
+- `public/models/katago-small.bin.gz`: the B6 tier, KataGo's small test network.
+- `public/models/katago-b10.bin.gz`: the B10 tier, a 10-block 128-channel network (~11 MB). This is the default tier.
+- `public/models/katago-b18.bin.gz.001` – `.004`: the B18 tier, split into four
+  ≤24 MiB chunks so Cloudflare's 25 MiB per-file limit can host it. The app
+  fetches the chunks in order, concatenates them, verifies MD5 and caches the
+  result in IndexedDB.
 - `public/tfjs/*.wasm`: copied from `@tensorflow/tfjs-backend-wasm`.
 
 These files are runtime assets, not application source. If they are missing,
 rerun `npm run fetch:model` or `npm run copy:tfjs-wasm`.
 
-To test with the stronger b18 browser model:
+`npm run fetch:model` fills in any missing files. The ~96 MB b18 file is
+skipped when absent unless you run with `FETCH_B18_MODEL=1`, so normal builds
+keep whatever copy is already committed under `public/models/`.
+
+To fetch or refresh the b18 model explicitly:
 
 ```sh
-FETCH_KATRAIN_MODEL=1 npm run fetch:model
+FETCH_B18_MODEL=1 npm run fetch:model
 ```
-
-That command prefers a sibling `../katrain-ref/` checkout and falls back to
-downloading from KataGo training media.
 
 ## Testing
 
@@ -85,7 +90,6 @@ defaults to `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`.
 Override with:
 
 ```sh
-CHROME_PATH=/path/to/chrome npm run test:viewport
 ```
 
 Screenshots go to `/tmp/easy-go-viewport-check` unless
@@ -98,6 +102,13 @@ Browser state can affect manual testing. Useful storage locations:
 - Settings: versioned `easy-go:settings:*` localStorage keys.
 - Library: IndexedDB `easy-go-library`, with a localStorage fallback.
 - Uploaded model: IndexedDB `easy-go-models`.
+- Downloaded model cache (b18 and worker-fetched models): IndexedDB
+  `easy-go-model-cache`. Keys include a version number; bumping
+  `MODEL_CACHE_VERSION` in `src/engine/katago/modelCache.ts` invalidates it
+  after a model update. Every cache hit is also checked against the model's
+  MD5 (`tier.md5` in `src/engine/katago/modelDefaults.ts`); a mismatch is
+  treated as missing and re-downloaded, so corruption or a stale copy is
+  replaced even without a version bump.
 - Auto-save: easy-go localStorage keys managed by `src/utils/autoSave.ts`.
 
 Use the app UI when possible to clear analysis cache or uploaded model state.

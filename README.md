@@ -19,9 +19,7 @@ PWA. There is no analysis server to run.
 
 **Study and play**
 
-- Play against browser KataGo with KaTrain-style AI strategies: `default`,
-  `rank`, `scoreloss`, `policy`, `weighted`, `pick`, `local`, `tenuki`,
-  `territory`, `influence`, `jigo`, `simple`, and `settle`.
+- Play against browser KataGo, which always plays the strongest move it finds.
 - Teach mode, byo-yomi clocks, resign/pass handling, manual scoring, and 9x9,
   13x13, or 19x19 boards.
 - Branching move trees with notes, setup stones, markup, and SGF-compatible
@@ -42,7 +40,7 @@ PWA. There is no analysis server to run.
 **Use it anywhere**
 
 - Responsive desktop and mobile layouts.
-- Board themes, UI themes, keyboard shortcuts, command palette, gamepad
+- UI themes, keyboard shortcuts, command palette, gamepad
   navigation, sound, and haptics.
 - Document language metadata for 13 languages, which tags the page and the SGF
   you export. The interface itself is English only.
@@ -67,25 +65,37 @@ the small KataGo test model exists at `public/models/katago-small.bin.gz`.
 | `npm run dev` | Start the Vite dev server with COOP/COEP headers. |
 | `npm test` | Run the Vitest suite. |
 | `npm run test:typecheck` | Type-check the tests. |
-| `npm run test:viewport` | Run the Chrome viewport smoke test. |
 | `npm run lint` | Run ESLint. |
 | `npm run build` | Type-check and build the production app. |
 | `npm run preview` | Serve the production build locally with preview headers. |
 
 ## Models and Performance
 
-The bundled model is a tiny KataGo test network, about 3.6 MB compressed, so the
-app can boot quickly on ordinary laptops and phones. It is useful for smoke
-testing and casual UI work, not strong analysis.
+Three model tiers are hosted locally on the site and selectable from the new
+game dialog:
 
-For real analysis, Settings offers the recommended browser-practical b18
-network:
+- **B6 (6M)** — KataGo's tiny test network, loads almost instantly.
+- **B10 (10M)** — the default; a 10-block 128-channel network. If the local
+  copy is missing the app starts on B6 and silently upgrades to B10 in the
+  background.
+- **B18 (96M)** — the recommended b18c384nbt network. Selecting it opens a
+  download dialog with a progress bar; the file is hosted as four ≤24 MiB
+  chunks (compatible with Cloudflare's 25 MiB limit), fetched and concatenated
+  in order, then cached in IndexedDB and reused on later visits without
+  re-downloading. Cached bytes are verified against the model's MD5 and
+  re-fetched when they mismatch.
 
-`kata1-b18c384nbt-s9996604416-d4316597426.bin.gz` (~96 MB)
+Each tier has its own independent per-move thinking-time slider in whole
+seconds — B6: 1–15 s, B10: 2–30 s, B18: 5–60 s. Switching to a tier resets
+its slider to the middle default (B6 5 s, B10 10 s, B18 30 s). Model buttons
+show "tier + seconds" (e.g. B6 13s) and update live while dragging the slider;
+no size labels are shown. The slider sits directly under the model buttons and
+follows the current wood theme color. Download progress uses real byte sizes
+instead of a hardcoded size label. Hint recommendations deliberately keep a
+huge fixed budget (5000 visits / 60 s) regardless of tier or thinking time.
 
-You can also enter a KataGo model URL or upload `.bin`, `.gz`, or `.bin.gz`
-weights for the session. The parser supports KataGo model versions 8 through
-16. Uploaded browser models are capped at 128 MB.
+The parser supports KataGo model versions 8 through 16. Uploaded browser
+models are capped at 128 MB.
 
 The engine prefers TensorFlow.js WebGPU, then falls back to WASM, then CPU.
 Threaded WASM needs `SharedArrayBuffer`, which browsers only expose when the

@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://huazhechen.github.io/easy-go/sitemap.xml

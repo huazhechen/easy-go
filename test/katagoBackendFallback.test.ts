@@ -113,5 +113,13 @@ describe('KataGo backend fallback policy', () => {
     expect(workerSource).toContain("stage: 'warmup'");
     expect(workerSource).toContain('await switchToFallbackBackendForRequest(requestedBackend, fallbackBackend);');
     expect(workerSource).toContain('backendPreference = requestedBackend;');
+    // The worker falls back to b6 and then upgrades to b10 in the background.
+    expect(workerSource).toContain('B6_MODEL_URL');
+    expect(workerSource).toContain('scheduleBackgroundModelUpgrade');
+    expect(workerSource).toContain('fetchModelBytes');
+    expect(workerSource).toContain('readValidatedCachedModel');
+    expect(workerSource).toContain('md5Hex');
+    expect(workerSource).toContain('Model checksum mismatch');
+    expect(workerSource).toContain('normalizeModelBytes');
   });
 });

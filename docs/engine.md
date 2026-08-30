@@ -22,31 +22,50 @@ binary and does not require a backend server.
 
 ## Model Loading
 
-The default model URL points to `models/katago-small.bin.gz`, resolved through
-the app base path. `scripts/fetch-katago-small-model.mjs` downloads the tiny
-test network when it is missing.
+The app ships three locally-hosted model tiers under `public/models/`:
 
-For stronger local analysis, Settings offers:
+| Tier | File | Size | 思考时间滑块 |
+| --- | --- | --- | --- |
+| B6 | `models/katago-small.bin.gz` | ~6M | 1–15 秒 |
+| B10 (default) | `models/katago-b10.bin.gz` | ~10M | 2–30 秒 |
+| B18 | `models/katago-b18.bin.gz` | ~96M | 5–60 秒 |
 
-`kata1-b18c384nbt-s9996604416-d4316597426.bin.gz`
+每个档位有自己独立的思考时间滑块范围（整数秒），切换模型时思考时间会
+重置为该档位默认中间值（B6 5 秒 / B10 10 秒 / B18 30 秒）；滑块直接贴在
+模型三个按钮下方，颜色跟随当前木色主题。模型按钮显示为“档位 + 当前思考
+秒数”（如 B6 13s），拖动滑块会实时刷新对应按钮文字，不再显示 M 数。
+新对局开始时使用当前档位所选时间作为 AI 每步思考上限。下载进度条使用
+真实字节大小（压缩/解压后按实际收到的字节显示），不再写死 96M。
+推荐落点/持续分析刻意使用写死的超大预算（5000 访问 / 60 秒），不随档位
+或思考时间变化。
 
-Developers can also run:
+The default tier is B10. When the local B10 file is unavailable the worker
+loads B6 first so play can start immediately, then fetches B10 in the
+background and silently swaps it in. B18 is ~96 MB, so the new-game dialog asks
+for confirmation, shows a streaming download progress bar, and caches the bytes
+in IndexedDB (`easy-go-model-cache`); later visits rebuild a blob URL from the
+cache and never re-download it unless the cache version changes. B18 is hosted
+as four ≤24 MiB chunks (`katago-b18.bin.gz.001`–`.004`) — compatible with
+Cloudflare's 25 MiB per-file limit — and the client fetches them in order,
+concatenates them, then normalizes and MD5-checks the result.
 
-```sh
-FETCH_KATRAIN_MODEL=1 npm run fetch:model
-```
-
-That copies the b18 model from `../katrain-ref/katrain/models/` when present, or
-downloads it into `public/models/`.
+Every cached or downloaded copy is verified against the tier's MD5 (of the
+decompressed `.bin` bytes) before use. Static hosts often serve `.gz` files
+with `Content-Encoding: gzip`, which the browser auto-decodes, so the app
+normalizes the bytes after fetch and checks the decompressed hash. If the
+bytes no longer match (corruption, a replaced model file that kept the same
+version number), the stale cache entry is discarded and the model is re-fetched
+automatically.
 
 At runtime, the worker:
 
 1. Normalizes the requested backend.
-2. Fetches the model URL or blob URL.
-3. Decompresses gzip weights with `pako` when needed.
-4. Parses the KataGo binary model.
-5. Builds and warms the TensorFlow.js model.
-6. Caches the loaded model until the model URL changes.
+2. Reads the model bytes from the IndexedDB cache and verifies their MD5 when present.
+3. Otherwise fetches the model URL (or blob URL) and writes the bytes to the cache.
+4. Decompresses gzip weights with `pako` when needed.
+5. Parses the KataGo binary model.
+6. Builds and warms the TensorFlow.js model.
+7. Keeps the loaded model in memory until the model URL changes.
 
 Supported model versions are 8 through 16. Models with unsupported meta encoder
 versions or unsupported trunk block kinds fail fast with a visible engine error.
@@ -148,13 +167,6 @@ often a player of the configured rank plays the move that was actually played, s
 a review can say whether a move was a normal choice at that level or an unusual
 one, rather than only how many points it cost.
 
-The same network drives the `human` AI strategy: instead of playing the engine's
-move, the bot samples from the human policy at full temperature, which is what
-KataGo recommends for imitating a rank rather than beating it. Passing is left to
-the engine, because the game records the network learned from often omit passes.
-The moves that policy likes are also given a couple of visits in every analysis,
-so the report can say what the move a player of that rank would choose costs.
-
 ### Finished games
 
 Two passes end the game. Under area scoring the result is then a matter of
@@ -180,22 +192,19 @@ The store uses the engine in several ways:
 - Quick game analysis: value-only batch evaluation for a fast whole-line scan.
 - Fast game analysis: low-visit MCTS over the current line.
 - Full game analysis: requested-visit MCTS over selected nodes or mistakes.
-- AI move selection: runs analysis and chooses a move through the configured
-  KaTrain-style strategy.
+- AI move selection: runs analysis and plays the search's top-ranked move.
 - Self-play to end: repeats AI move selection until the game is complete.
 
 The main-thread `analysisQueue` handles cancellation, staleness, priority, and
 cache reuse before requests reach the worker.
 
-## AI Strategies
+## AI Moves
 
-The strategy list mirrors KaTrain concepts: `default`, `rank`, `scoreloss`,
-`policy`, `weighted`, `pick`, `local`, `tenuki`, `territory`, `influence`,
-`jigo`, `simple`, and `settle`.
-
-Most strategies choose among candidate moves using visits, policy, score loss,
-or shape/territory heuristics. `simple` and `settle` need per-move ownership,
-so they request slower analysis with move ownership enabled.
+AI moves (playing against the bot or self-play) always take the search's
+top-ranked candidate: the move with the best play-selection value at the root,
+same ranking the recommendation overlay draws. The earlier KaTrain-style
+strategy system (`rank`, `scoreloss`, `pick`, `local`, ...) and its settings
+were removed.
 
 ## Verifying Evaluation Accuracy
 

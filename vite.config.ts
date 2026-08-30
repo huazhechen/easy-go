@@ -84,7 +84,6 @@ export default defineConfig({
             id.includes('/react/') ||
             id.includes('/react-dom/') ||
             id.includes('/scheduler/') ||
-            id.includes('/use-sync-external-store/') ||
             id.includes('/zustand/')
           ) {
             return 'react-vendor';
@@ -98,14 +97,6 @@ export default defineConfig({
   },
   test: {
     exclude: [...configDefaults.exclude, '**/.external/**'],
-  },
-  resolve: {
-    alias: {
-      'use-sync-external-store/shim/with-selector.js': path.resolve(
-        __dirname,
-        'src/shims/useSyncExternalStoreWithSelector.ts'
-      ),
-    },
   },
   server: {
     // Honor the PORT env var (e.g. when launched by preview tooling); fall back to Vite's default otherwise.

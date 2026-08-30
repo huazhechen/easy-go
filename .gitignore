@@ -11,12 +11,14 @@ node_modules
 dist
 dist-ssr
 .external/
+.model-src/
 *.local
 
 # KataGo models (fetched via script)
 public/models/*.bin.gz
 public/models/*.txt.gz
 !public/models/katago-small.bin.gz
+!public/models/katago-b10.bin.gz
 public/tfjs/*.wasm
 
 # Editor directories and files

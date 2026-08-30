@@ -123,17 +123,6 @@ export interface GameNode {
   drawings?: BoardDrawing[]; // Freehand pen/highlight strokes, session-only.
 }
 
-export type BoardThemeId =
-  | 'bamboo'
-  | 'flat'
-  | 'dark'
-  | 'hikaru'
-  | 'shell-slate'
-  | 'yunzi'
-  | 'happy-stones'
-  | 'kifu'
-  | 'baduktv';
-
 export type ResolvedUiThemeId = 'noir' | 'kaya' | 'studio' | 'light';
 export type UiThemeId = ResolvedUiThemeId | 'system';
 export type UiDensityId = 'compact' | 'comfortable' | 'large';
@@ -149,7 +138,6 @@ export interface GameSettings {
   noteFontScale: number; // Font-size multiplier for the notes panel preview/editor (A- / A+).
   fuzzyStonePlacement: boolean;
   showNextMovePreview: boolean;
-  boardTheme: BoardThemeId;
   uiTheme: UiThemeId;
   uiDensity: UiDensityId;
   gamepadNavigation: boolean;
@@ -217,71 +205,6 @@ export interface GameSettings {
   humanSlEnabled: boolean;
   humanSlModelUrl: string;
   humanSlProfile: string; // KataGo humanSLProfile, e.g. rank_5k / preaz_1d / proyear_1950
-  // Which of KataGo's two human-bot configs ai:human follows: 'imitate' plays the
-  // rank as it is (gtp_human5k_example.cfg), 'search' backs it with the search
-  // (gtp_human9d_search_example.cfg).
-  humanSlBotStyle: 'imitate' | 'search';
   analysisPolicySource: 'engine' | 'human'; // which policy the R overlay draws
   teachNumUndoPrompts: number[]; // KaTrain trainer/num_undo_prompts
-
-  aiStrategy:
-    | 'default'
-    | 'human' // KataGo human SL net: plays like the configured rank
-    | 'rank'
-    | 'scoreloss'
-    | 'policy'
-    | 'weighted'
-    | 'pick'
-    | 'local'
-    | 'tenuki'
-    | 'territory'
-    | 'influence'
-    | 'jigo'
-    | 'simple'
-    | 'settle';
-  aiRankKyu: number; // KaTrain ai:p:rank/kyu_rank
-  aiScoreLossStrength: number; // KaTrain ai:scoreloss/strength
-  aiPolicyOpeningMoves: number; // KaTrain ai:policy/opening_moves
-  aiWeightedPickOverride: number; // KaTrain ai:p:weighted/pick_override
-  aiWeightedWeakenFac: number; // KaTrain ai:p:weighted/weaken_fac
-  aiWeightedLowerBound: number; // KaTrain ai:p:weighted/lower_bound
-
-  aiPickPickOverride: number; // KaTrain ai:p:pick/pick_override
-  aiPickPickN: number; // KaTrain ai:p:pick/pick_n
-  aiPickPickFrac: number; // KaTrain ai:p:pick/pick_frac
-
-  aiLocalPickOverride: number; // KaTrain ai:p:local/pick_override
-  aiLocalStddev: number; // KaTrain ai:p:local/stddev
-  aiLocalPickN: number; // KaTrain ai:p:local/pick_n
-  aiLocalPickFrac: number; // KaTrain ai:p:local/pick_frac
-  aiLocalEndgame: number; // KaTrain ai:p:local/endgame
-
-  aiTenukiPickOverride: number; // KaTrain ai:p:tenuki/pick_override
-  aiTenukiStddev: number; // KaTrain ai:p:tenuki/stddev
-  aiTenukiPickN: number; // KaTrain ai:p:tenuki/pick_n
-  aiTenukiPickFrac: number; // KaTrain ai:p:tenuki/pick_frac
-  aiTenukiEndgame: number; // KaTrain ai:p:tenuki/endgame
-
-  aiInfluencePickOverride: number; // KaTrain ai:p:influence/pick_override
-  aiInfluencePickN: number; // KaTrain ai:p:influence/pick_n
-  aiInfluencePickFrac: number; // KaTrain ai:p:influence/pick_frac
-  aiInfluenceThreshold: number; // KaTrain ai:p:influence/threshold
-  aiInfluenceLineWeight: number; // KaTrain ai:p:influence/line_weight
-  aiInfluenceEndgame: number; // KaTrain ai:p:influence/endgame
-
-  aiTerritoryPickOverride: number; // KaTrain ai:p:territory/pick_override
-  aiTerritoryPickN: number; // KaTrain ai:p:territory/pick_n
-  aiTerritoryPickFrac: number; // KaTrain ai:p:territory/pick_frac
-  aiTerritoryThreshold: number; // KaTrain ai:p:territory/threshold
-  aiTerritoryLineWeight: number; // KaTrain ai:p:territory/line_weight
-  aiTerritoryEndgame: number; // KaTrain ai:p:territory/endgame
-
-  aiJigoTargetScore: number; // KaTrain ai:jigo/target_score
-
-  aiOwnershipMaxPointsLost: number; // KaTrain ai:simple/max_points_lost
-  aiOwnershipSettledWeight: number; // KaTrain ai:simple/settled_weight
-  aiOwnershipOpponentFac: number; // KaTrain ai:simple/opponent_fac
-  aiOwnershipMinVisits: number; // KaTrain ai:simple/min_visits
-  aiOwnershipAttachPenalty: number; // KaTrain ai:simple/attach_penalty
-  aiOwnershipTenukiPenalty: number; // KaTrain ai:simple/tenuki_penalty
 }

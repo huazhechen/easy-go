@@ -1,5 +1,5 @@
 import { createWithEqualityFn as create } from 'zustand/traditional';
-import { DEFAULT_BOARD_SIZE, type FloatArray, type GameRules, type GameState, type BoardState, type Player, type AnalysisResult, type BoardDrawing, type GameNode, type Move, type GameSettings, type CandidateMove, type RegionOfInterest, type BoardSize, type KataGoBackendPreference, type EditTool } from '../types';
+import { DEFAULT_BOARD_SIZE, type GameRules, type GameState, type BoardState, type Player, type AnalysisResult, type BoardDrawing, type GameNode, type Move, type GameSettings, type CandidateMove, type RegionOfInterest, type BoardSize, type KataGoBackendPreference, type EditTool } from '../types';
 import { findMistakeNavigationTarget } from '../utils/mistakeNavigation';
 import { applyCapturesInPlace, boardsEqual, getLiberties, getLegalMoves, isEye, isValidMove } from '../utils/gameLogic';
 import { playStoneSound, playCaptureSound, playPassSound, playNewGameSound } from '../utils/sound';
@@ -7,12 +7,16 @@ import { coordinateToSgf, expandSgfPointList, extractKaTrainUserNoteFromSgfComme
 import { getKataGoEngineClient, isKataGoCanceledError } from '../engine/katago/client';
 import type { KataGoAnalysisPayload } from '../engine/katago/types';
 import { ENGINE_MAX_TIME_MS, ENGINE_MAX_VISITS } from '../engine/katago/limits';
-import { KATAGO_HUMAN_MODEL_URL, KATAGO_RECOMMENDED_MODEL_URL, KATAGO_SMALL_MODEL_PATH } from '../engine/katago/modelDefaults';
+import {
+  defaultModelUrl,
+  KATAGO_HUMAN_MODEL_URL,
+  KATAGO_RECOMMENDED_MODEL_URL,
+  KATAGO_SMALL_MODEL_PATH,
+} from '../engine/katago/modelDefaults';
 import { KATAGO_HUMAN_PROFILE_DEFAULT } from '../engine/katago/searchParams';
 import { decodeKaTrainKt, kaTrainAnalysisToAnalysisResult } from '../utils/katrainSgfAnalysis';
 import { decodeKayaKa } from '../utils/kayaSgfAnalysis';
 import { publicUrl } from '../utils/publicUrl';
-import { isBoardThemeId } from '../utils/boardThemes';
 import { getPreferredAppLocaleId, isAppLocaleId } from '../utils/locales';
 import { createEmptyBoard, getHandicapPoints, getMaxHandicap, normalizeBoardSize } from '../utils/boardSize';
 import { makeGameStateAnalysisPositionKey } from '../utils/analysisPositionKey';
@@ -32,9 +36,7 @@ import {
   type ActiveBranchMap,
 } from '../utils/branchNavigation';
 import { ensurePinGameId, getNodePath, getPinGameId, resolveNodePath, restorePinnedVariations, writeStoredPinnedVariations, type PinnedVariation } from '../utils/pinnedVariations';
-import { describeHumanBotPick, pickHumanBotMove } from '../utils/humanBotMove';
 import { komiWithHandicapBonus } from '../utils/handicap';
-import { humanBotPresets } from '../engine/katago/chosenMove';
 import { getResignResult } from '../utils/resign';
 import {
   admitNotification,
@@ -306,11 +308,6 @@ const loadStoredSettings = (): Partial<GameSettings> | null => {
     }
     if ((parsed as { katagoVisits?: unknown }).katagoVisits === OLD_DEFAULT_KATAGO_VISITS) {
       (parsed as { katagoVisits: number }).katagoVisits = DEFAULT_KATAGO_VISITS;
-    }
-    if ('boardTheme' in parsed) {
-      if (!isBoardThemeId((parsed as { boardTheme?: unknown }).boardTheme)) {
-        delete (parsed as { boardTheme?: unknown }).boardTheme;
-      }
     }
     if ('appLocale' in parsed) {
       if (!isAppLocaleId((parsed as { appLocale?: unknown }).appLocale)) {
@@ -991,7 +988,6 @@ const defaultSettings: GameSettings = {
   noteFontScale: 1,
   fuzzyStonePlacement: true,
   showNextMovePreview: true,
-  boardTheme: 'hikaru',
   // 'system' resolves to noir/light per the device's color-scheme preference.
   uiTheme: 'system',
   uiDensity: 'comfortable',
@@ -1028,11 +1024,12 @@ const defaultSettings: GameSettings = {
   analysisShowPolicy: false,
   analysisPolicyMetric: 'policy',
   analysisShowOwnership: true,
-  katagoModelUrl: publicUrl(KATAGO_SMALL_MODEL_PATH),
+  katagoModelUrl: defaultModelUrl(),
   katagoBackend: 'webgpu',
   katagoVisits: DEFAULT_KATAGO_VISITS,
   katagoFastVisits: 25,
-  katagoMaxTimeMs: 8000,
+  // Matches the default B10 tier's per-move thinking time (see modelDefaults).
+  katagoMaxTimeMs: 2000,
   katagoBatchSize: 16,
   katagoMaxChildren: DEFAULT_BOARD_SIZE * DEFAULT_BOARD_SIZE,
   katagoTopK: 10,
@@ -1047,56 +1044,8 @@ const defaultSettings: GameSettings = {
   humanSlEnabled: false,
   humanSlModelUrl: KATAGO_HUMAN_MODEL_URL,
   humanSlProfile: KATAGO_HUMAN_PROFILE_DEFAULT,
-  humanSlBotStyle: 'imitate',
   analysisPolicySource: 'engine',
   teachNumUndoPrompts: [1, 1, 1, 0.5, 0, 0],
-
-  aiStrategy: 'rank',
-  aiRankKyu: 4.0,
-  aiScoreLossStrength: 0.2,
-  aiPolicyOpeningMoves: 22,
-  aiWeightedPickOverride: 1.0,
-  aiWeightedWeakenFac: 1.25,
-  aiWeightedLowerBound: 0.001,
-
-  aiPickPickOverride: 0.95,
-  aiPickPickN: 5,
-  aiPickPickFrac: 0.35,
-
-  aiLocalPickOverride: 0.95,
-  aiLocalStddev: 1.5,
-  aiLocalPickN: 15,
-  aiLocalPickFrac: 0.0,
-  aiLocalEndgame: 0.5,
-
-  aiTenukiPickOverride: 0.85,
-  aiTenukiStddev: 7.5,
-  aiTenukiPickN: 5,
-  aiTenukiPickFrac: 0.4,
-  aiTenukiEndgame: 0.45,
-
-  aiInfluencePickOverride: 0.95,
-  aiInfluencePickN: 5,
-  aiInfluencePickFrac: 0.3,
-  aiInfluenceThreshold: 3.5,
-  aiInfluenceLineWeight: 10,
-  aiInfluenceEndgame: 0.4,
-
-  aiTerritoryPickOverride: 0.95,
-  aiTerritoryPickN: 5,
-  aiTerritoryPickFrac: 0.3,
-  aiTerritoryThreshold: 3.5,
-  aiTerritoryLineWeight: 2,
-  aiTerritoryEndgame: 0.4,
-
-  aiJigoTargetScore: 0.5,
-
-  aiOwnershipMaxPointsLost: 1.75,
-  aiOwnershipSettledWeight: 1.0,
-  aiOwnershipOpponentFac: 0.5,
-  aiOwnershipMinVisits: 3,
-  aiOwnershipAttachPenalty: 1.0,
-  aiOwnershipTenukiPenalty: 0.5,
 };
 
 const initialSettings: GameSettings = {
@@ -1294,10 +1243,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
               if (!state.isContinuousAnalysis) return;
               if (!state.isAnalysisMode) return;
 
-              const target = Math.max(16, state.settings.katagoVisits);
-              const rawFast = state.settings.katagoFastVisits;
-              const fast = Number.isFinite(rawFast) ? rawFast : 25;
-              const initialVisits = Math.max(16, Math.min(target, Math.floor(fast)));
+              // Continuous recommendation analysis is independent from the
+              // opponent's preset: keep deepening until engine hard limits.
+              const target = ENGINE_MAX_VISITS;
+              const initialVisits = Math.max(16, Math.min(target, state.settings.katagoFastVisits));
               const node = state.currentNode;
               const normalizedVisits = nodeAnalysisVisitCount(node);
 
@@ -1315,6 +1264,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
               await get().runAnalysis({
                 force: true,
                 visits: nextVisits,
+                maxTimeMs: ENGINE_MAX_TIME_MS,
                 reuseTree: true,
                 ownershipRefreshIntervalMs: state.settings.katagoOwnershipMode === 'tree' ? 500 : undefined,
               });
@@ -3316,13 +3266,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const fillDameBeforePass = state.settings.katagoFillDameBeforePass;
         const nnRandomize = false;
         const conservativePass = state.settings.katagoConservativePass;
-        const aiNeedsMovesOwnership = state.settings.aiStrategy === 'simple' || state.settings.aiStrategy === 'settle';
-        const aiWantsHumanPolicy = state.settings.aiStrategy === 'human' && !!state.settings.humanSlModelUrl;
-        const aiOwnershipMode = aiNeedsMovesOwnership ? 'tree' : state.settings.katagoOwnershipMode;
-        const topK =
-          state.settings.aiStrategy === 'default'
-            ? state.settings.katagoTopK
-            : Math.max(state.settings.katagoTopK, 30);
+        const topK = state.settings.katagoTopK;
         const visits = Math.max(16, Math.min(state.settings.katagoVisits, ENGINE_MAX_VISITS));
         const maxTimeMs = Math.max(25, Math.min(state.settings.katagoMaxTimeMs, ENGINE_MAX_TIME_MS));
         const batchSize = state.settings.katagoBatchSize;
@@ -3339,24 +3283,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       let retryScheduled = false;
       let timedOut = false;
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
-      const finishFromCurrentKataGo = () => {
-        if (timedOut || !isCurrentRequest()) return;
-        timedOut = true;
-        set({ isAiThinking: false });
-        const latest = get();
-        if (latest.currentNode.id !== nodeId) return;
-        if (latest.currentPlayer !== playerAtStart) return;
-        const top = latest.currentNode.analysis?.moves?.[0] ?? latest.analysisData?.moves?.[0];
-        if (top && top.x >= 0 && top.y >= 0 && isValidMove(latest.board, top.x, top.y, playerAtStart, parentBoard)) {
-          latest.playMove(top.x, top.y);
-        } else if (top && (top.x < 0 || top.y < 0)) {
-          latest.passTurn();
-        } else {
-          makeHeuristicMove(latest);
-        }
-        analysisQueue.cancelGroup('ai-move', 'AI move hard timeout');
-      };
-      timeoutId = setTimeout(finishFromCurrentKataGo, maxTimeMs);
+      // The Worker owns the search deadline and returns its current best move
+      // when maxTimeMs expires. Do not start a second wall-clock timer here:
+      // queueing, model warm-up, and backend initialization can legitimately
+      // consume more than the search budget and would cancel every AI move.
 
       void analysisQueue
         .enqueue<KataGoAnalysisPayload>({
@@ -3373,7 +3303,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
             state.settings.katagoBackend,
             rules,
             topK,
-            aiNeedsMovesOwnership,
             analysisPvLen,
             conservativePass,
             visits,
@@ -3381,9 +3310,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             batchSize,
             maxChildren,
             state.settings.katagoReuseTree,
-            aiOwnershipMode,
-            state.settings.aiStrategy,
-            aiWantsHumanPolicy ? state.settings.humanSlProfile : ''
+            state.settings.katagoOwnershipMode,
           ),
           preempt: true,
           run: () => getKataGoEngineClient().analyze({
@@ -3401,25 +3328,26 @@ export const useGameStore = create<GameStore>((set, get) => ({
 	          komi: komiWithHandicapBonus(state.rootNode.gameState.board, rules, state.komi),
             rules,
 	          topK,
-            includeMovesOwnership: aiNeedsMovesOwnership,
+            includeMovesOwnership: false,
             analysisPvLen,
             wideRootNoise,
             rootPolicyTemperature,
             fillDameBeforePass,
             nnRandomize,
             conservativePass,
-            humanModelUrl: aiWantsHumanPolicy ? state.settings.humanSlModelUrl : undefined,
-            humanSlProfile: aiWantsHumanPolicy ? state.settings.humanSlProfile : undefined,
-            humanSlRootExploreProb:
-              state.settings.aiStrategy === 'human'
-                ? humanBotPresets[state.settings.humanSlBotStyle].rootExploreProbWeightless
-                : undefined,
           visits,
           maxTimeMs,
           batchSize,
           maxChildren,
           reuseTree: state.settings.katagoReuseTree,
-          ownershipMode: aiOwnershipMode,
+          ownershipMode: state.settings.katagoOwnershipMode,
+          reportDuringSearchEveryMs: 250,
+          onProgress: (progress) => {
+            if (isCurrentRequest()) {
+              node.analysisVisitsRequested = progress.rootVisits;
+              set({ treeVersion: get().treeVersion + 1 });
+            }
+          },
           // AI moves share the interactive channel so a timed-out search can
           // be superseded immediately by the next recommendation request.
           analysisGroup: 'interactive',
@@ -3435,7 +3363,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
           if (latest.currentNode.id !== nodeId) return;
           if (latest.currentPlayer !== playerAtStart) return;
           if (!force && (!latest.isAiPlaying || latest.aiColor !== playerAtStart)) return;
-          const settings = latest.settings;
           const boardSize = getBoardSizeFromBoard(latest.board);
 
           const analysisWithTerritory: AnalysisResult = {
@@ -3457,632 +3384,31 @@ export const useGameStore = create<GameStore>((set, get) => ({
             policy: analysis.policy,
             humanPolicy: analysis.humanPolicy,
             ownershipStdev: analysis.ownershipStdev,
-            ownershipMode: aiOwnershipMode,
+            ownershipMode: latest.settings.katagoOwnershipMode,
           };
 
           // Cache analysis on the node we analyzed.
           node.analysis = analysisWithTerritory;
 
-          type PolicyMove = { prob: number; x: number; y: number; isPass: boolean };
-          const policyRanking = (policy: FloatArray): PolicyMove[] => {
-            const out: PolicyMove[] = [];
-            for (let y = 0; y < boardSize; y++) {
-              for (let x = 0; x < boardSize; x++) {
-                const p = policy[y * boardSize + x] ?? -1;
-                if (p > 0) out.push({ prob: p, x, y, isPass: false });
-              }
-            }
-            const pass = policy[boardSize * boardSize] ?? -1;
-            if (pass > 0) out.push({ prob: pass, x: -1, y: -1, isPass: true });
-            out.sort((a, b) => b.prob - a.prob);
-            return out;
-          };
-
-          const pickOneWeighted = <T,>(items: Array<{ weight: number; value: T }>): T | null => {
-            let total = 0;
-            for (const it of items) {
-              if (it.weight > 0 && Number.isFinite(it.weight)) total += it.weight;
-            }
-            if (!(total > 0)) return null;
-            let r = Math.random() * total;
-            for (const it of items) {
-              const w = it.weight;
-              if (!(w > 0) || !Number.isFinite(w)) continue;
-              if (r < w) return it.value;
-              r -= w;
-            }
-            return items.length > 0 ? items[items.length - 1]!.value : null;
-          };
-
-          const weightedSampleWithoutReplacement = <T,>(
-            items: T[],
-            n: number,
-            weightFn: (item: T) => number
-          ): T[] => {
-            const scored = items.map((item) => {
-              const w = Math.max(1e-18, weightFn(item));
-              const u = Math.random();
-              const key = Math.log(Math.max(1e-18, u)) / w;
-              return { key, item };
-            });
-            scored.sort((a, b) => b.key - a.key);
-            return scored.slice(0, Math.min(Math.max(0, n), scored.length)).map((s) => s.item);
-          };
-
-          const chooseByStrategy = (): { x: number; y: number; thoughts: string } | null => {
-            const strategy = settings.aiStrategy;
-            const candidates = analysisWithTerritory.moves ?? [];
-
-            const best =
-              candidates.find((m) => m.order === 0) ?? candidates[0] ?? null;
-            const bestLabel =
-              !best
-                ? 'pass'
-                : best.x < 0 || best.y < 0
-                  ? 'pass'
-                  : `${String.fromCharCode(65 + (best.x >= 8 ? best.x + 1 : best.x))}${boardSize - best.y}`;
-
-            if (strategy === 'default') {
-              if (!best) return null;
-              return {
-                x: best.x,
-                y: best.y,
-                thoughts: `Default strategy chose top move ${bestLabel}.`,
-              };
-            }
-
-            if (strategy === 'human') {
-              const humanPolicy = analysisWithTerritory.humanPolicy;
-              if (humanPolicy) {
-                const pick = pickHumanBotMove({
-                  humanPolicy,
-                  boardSize,
-                  engineBest: best,
-                  candidates,
-                  playerToMove: playerAtStart,
-                  turnNumber: latest.moveHistory.length,
-                  params: humanBotPresets[settings.humanSlBotStyle],
-                  isLegal: (x, y) => isValidMove(latest.board, x, y, playerAtStart, parentBoard),
-                });
-                if (pick) {
-                  return {
-                    x: pick.x,
-                    y: pick.y,
-                    thoughts: describeHumanBotPick(pick, settings.humanSlProfile, boardSize),
-                  };
-                }
-              }
-              // Without the human net there is nothing human to imitate, so fall back
-              // to the engine's own move rather than playing something random.
-              if (!best) return null;
-              return {
-                x: best.x,
-                y: best.y,
-                thoughts: `Human profile unavailable, played the engine's move ${bestLabel}.`,
-              };
-            }
-
-            if (strategy === 'scoreloss') {
-              if (candidates.length === 0) return null;
-              const c = Math.max(0, settings.aiScoreLossStrength);
-              const weighted = candidates.map((m) => ({
-                weight: Math.exp(Math.min(200, -c * Math.max(0, m.pointsLost))),
-                value: m,
-              }));
-              const picked = pickOneWeighted(weighted);
-              if (!picked) return null;
-              const label =
-                picked.x < 0 || picked.y < 0
-                  ? 'pass'
-                  : `${String.fromCharCode(65 + (picked.x >= 8 ? picked.x + 1 : picked.x))}${boardSize - picked.y}`;
-              return {
-                x: picked.x,
-                y: picked.y,
-                thoughts: `ScoreLoss picked ${label} (pointsLost ${picked.pointsLost.toFixed(1)}, strength ${c}).`,
-              };
-            }
-
-            if (strategy === 'jigo') {
-              if (candidates.length === 0) return null;
-              const target = settings.aiJigoTargetScore;
-              const sign = playerAtStart === 'black' ? 1 : -1;
-
-              let bestCand = candidates[0]!;
-              let bestDiff = Math.abs(sign * bestCand.scoreLead - target);
-              for (const m of candidates) {
-                const diff = Math.abs(sign * m.scoreLead - target);
-                if (diff < bestDiff) {
-                  bestDiff = diff;
-                  bestCand = m;
-                }
-              }
-              const label =
-                bestCand.x < 0 || bestCand.y < 0
-                  ? 'pass'
-                  : `${String.fromCharCode(65 + (bestCand.x >= 8 ? bestCand.x + 1 : bestCand.x))}${boardSize - bestCand.y}`;
-              return {
-                x: bestCand.x,
-                y: bestCand.y,
-                thoughts: `Jigo picked ${label} (target ${target}, diff ${bestDiff.toFixed(1)}).`,
-              };
-            }
-
-            if (strategy === 'simple' || strategy === 'settle') {
-              const modeName = strategy === 'simple' ? 'ai:simple' : 'ai:settle';
-
-              if (candidates.length === 0) return null;
-              const topCand = candidates[0]!;
-              if (topCand.x < 0 || topCand.y < 0) {
-                return { x: topCand.x, y: topCand.y, thoughts: `${modeName}: top move is pass.` };
-              }
-
-              const nextPlayer = playerAtStart;
-              const lastMovePlayer = latest.currentNode.move?.player ?? null;
-
-              const xyToGtp = (x: number, y: number): string => {
-                if (x < 0 || y < 0) return 'pass';
-                const col = x >= 8 ? x + 1 : x;
-                const letter = String.fromCharCode(65 + col);
-                return `${letter}${boardSize - y}`;
-              };
-
-              const inBounds = (x: number, y: number) => x >= 0 && x < boardSize && y >= 0 && y < boardSize;
-
-              const isAttachment = (x: number, y: number): boolean => {
-                if (x < 0 || y < 0) return false;
-                // KaTrain: self.cn.player is last mover; if none, no attachment penalty.
-                if (!lastMovePlayer) return false;
-
-                const opp = lastMovePlayer;
-                let attachOpp = 0;
-                const dirs: Array<[number, number]> = [
-                  [1, 0],
-                  [-1, 0],
-                  [0, 1],
-                  [0, -1],
-                ];
-                for (const [dx, dy] of dirs) {
-                  const nx = x + dx;
-                  const ny = y + dy;
-                  if (!inBounds(nx, ny)) continue;
-                  if (latest.board[ny]?.[nx] === opp) attachOpp++;
-                }
-
-                let nearbyOwn = 0;
-                // NOTE: Mirrors KaTrain upstream exactly (including its odd ranges).
-                const dxs = [-2, 0, 1, 2];
-                const dys = [-3, 0, 1, 2];
-                for (const dx of dxs) {
-                  for (const dy of dys) {
-                    if (Math.abs(dx) + Math.abs(dy) > 2) continue;
-                    const nx = x + dx;
-                    const ny = y + dy;
-                    if (!inBounds(nx, ny)) continue;
-                    if (latest.board[ny]?.[nx] === nextPlayer) nearbyOwn++;
-                  }
-                }
-
-                return attachOpp >= 1 && nearbyOwn === 0;
-              };
-
-              const isTenuki = (x: number, y: number): boolean => {
-                if (x < 0 || y < 0) return false;
-                const a = latest.currentNode;
-                const b = latest.currentNode.parent;
-                if (!a || !a.move || a.move.x < 0 || a.move.y < 0) return false;
-                if (!b || !b.move || b.move.x < 0 || b.move.y < 0) return false;
-
-              const cheb = (m: Move) => Math.max(Math.abs(m.x - x), Math.abs(m.y - y));
-              return cheb(a.move) >= 5 && cheb(b.move) >= 5;
-            };
-
-              const settledness = (ownership: FloatArray, player: Player): number => {
-                if (strategy === 'simple') {
-                  const sign = player === 'black' ? 1 : -1;
-                  let sum = 0;
-                  for (const o of ownership) {
-                    if (sign * o > 0) sum += Math.abs(o);
-                  }
-                  return sum;
-                }
-
-                // settle: sum |ownership| for existing stones of the player
-                let sum = 0;
-                for (let yy = 0; yy < boardSize; yy++) {
-                  for (let xx = 0; xx < boardSize; xx++) {
-                    if (latest.board[yy]?.[xx] !== player) continue;
-                    const v = ownership[yy * boardSize + xx] ?? 0;
-                    sum += Math.abs(v);
-                  }
-                }
-                return sum;
-              };
-
-              const maxPointsLost = settings.aiOwnershipMaxPointsLost;
-              const settledWeight = settings.aiOwnershipSettledWeight;
-              const opponentFac = settings.aiOwnershipOpponentFac;
-              const minVisits = settings.aiOwnershipMinVisits;
-              const attachPenalty = settings.aiOwnershipAttachPenalty;
-              const tenukiPenalty = settings.aiOwnershipTenukiPenalty;
-
-              type Scored = {
-                move: CandidateMove;
-                ownSettled: number;
-                oppSettled: number;
-                attach: boolean;
-                tenuki: boolean;
-                score: number;
-              };
-              const scored: Scored[] = [];
-
-              for (const m of candidates) {
-                if (m.pointsLost >= maxPointsLost) continue;
-                if (!m.ownership || m.ownership.length < boardSize * boardSize) continue;
-                if (!(m.order <= 1 || m.visits >= minVisits)) continue;
-                const isPass = m.x < 0 || m.y < 0;
-                if (isPass && m.pointsLost > 0.75) continue;
-
-                const ownSettled = settledness(m.ownership, nextPlayer);
-                const oppSettled =
-                  strategy === 'settle'
-                    ? lastMovePlayer
-                      ? settledness(m.ownership, lastMovePlayer)
-                      : 0
-                    : settledness(m.ownership, nextPlayer === 'black' ? 'white' : 'black');
-                const attach = isAttachment(m.x, m.y);
-                const tenuki = isTenuki(m.x, m.y);
-                const score =
-                  m.pointsLost +
-                  attachPenalty * (attach ? 1 : 0) +
-                  tenukiPenalty * (tenuki ? 1 : 0) -
-                  settledWeight * (ownSettled + opponentFac * oppSettled);
-
-                scored.push({ move: m, ownSettled, oppSettled, attach, tenuki, score });
-              }
-
-              scored.sort((a, b) => a.score - b.score);
-              const best = scored[0]?.move ?? candidates[0]!;
-              if (scored.length === 0) {
-                return { x: best.x, y: best.y, thoughts: `${modeName}: no moves with ownership; playing top move.` };
-              }
-
-              const top5 = scored.slice(0, 5).map((s) => {
-                const mv = s.move;
-                const label = xyToGtp(mv.x, mv.y);
-                return `${label} (${mv.pointsLost.toFixed(1)} pt lost, ${mv.visits} visits, ${s.ownSettled.toFixed(1)} settledness, ${s.oppSettled.toFixed(1)} opponent settledness${s.attach ? ', attachment' : ''}${s.tenuki ? ', tenuki' : ''})`;
-              });
-
-              return {
-                x: scored[0]!.move.x,
-                y: scored[0]!.move.y,
-                thoughts: `${modeName} strategy. Top 5 Candidates ${top5.join(', ')} `,
-              };
-            }
-
-            const policy = analysisWithTerritory.policy;
-            const policyMoves = policy ? policyRanking(policy) : [];
-            if (policyMoves.length === 0) {
-              if (!best) return null;
-              return {
-                x: best.x,
-                y: best.y,
-                thoughts: `No policy available; fell back to top move ${bestLabel}.`,
-              };
-            }
-
-            const top5Pass = policyMoves.slice(0, 5).some((m) => m.isPass);
-
-            const shouldPlayTopMove = (override: number, overridetwo = 1.0): { move: PolicyMove; thoughts: string } | null => {
-              const top = policyMoves[0]!;
-              if (top5Pass) return { move: top, thoughts: 'Playing top policy move because pass is in top 5.' };
-              if (top.prob > override) return { move: top, thoughts: `Top policy move prob > ${override}.` };
-              const second = policyMoves[1];
-              if (second && top.prob + second.prob > overridetwo) {
-                return { move: top, thoughts: `Top 2 policy moves prob sum > ${overridetwo}.` };
-              }
-              return null;
-            };
-
-            const passProb = policy?.[boardSize * boardSize] ?? -1;
-            const legalPolicyMoves = policyMoves.filter((m) => !m.isPass && m.prob > 0);
-
-            type WeightedCoord = { score: number; weight: number; x: number; y: number };
-
-            const pickFromWeightedCoords = (
-              weightedCoords: WeightedCoord[],
-              nMoves: number,
-              strategyName: string
-            ): { x: number; y: number; thoughts: string } => {
-              const picked = weightedSampleWithoutReplacement(weightedCoords, nMoves, (c) => c.weight);
-
-              if (picked.length === 0) {
-                const top = policyMoves[0]!;
-                return { x: top.x, y: top.y, thoughts: `${strategyName}: no moves selected; playing top policy move.` };
-              }
-
-              picked.sort((a, b) => (b.score - a.score) || (b.weight - a.weight));
-              const topPicked = picked[0]!;
-
-              if (passProb > 0 && topPicked.score < passProb) {
-                const top = policyMoves[0]!;
-                return {
-                  x: top.x,
-                  y: top.y,
-                  thoughts: `${strategyName}: pass prob ${(passProb * 100).toFixed(2)}% > picked ${(topPicked.score * 100).toFixed(2)}%; playing top policy move.`,
-                };
-              }
-
-              return {
-                x: topPicked.x,
-                y: topPicked.y,
-                thoughts: `${strategyName}: picked from ${Math.min(nMoves, weightedCoords.length)} sampled moves.`,
-              };
-            };
-
-            const getPickNMoves = (pickFrac: number, pickN: number, legalCount: number): number =>
-              Math.max(1, Math.floor(Math.max(0, pickFrac) * legalCount + Math.max(0, pickN)));
-
-            const fallbackWeightedPolicy = (reason: string): { x: number; y: number; thoughts: string } => {
-              const weakenFac = 1.0;
-              const lowerBound = 0.02;
-              const override = 0.9;
-
-              const forced = shouldPlayTopMove(override);
-              if (forced) return { x: forced.move.x, y: forced.move.y, thoughts: `${reason}: ${forced.thoughts}` };
-
-              const weighted = policyMoves
-                .filter((m) => !m.isPass && m.prob > lowerBound)
-                .map((m) => ({ weight: Math.pow(m.prob, 1 / weakenFac), value: m }));
-              const picked = pickOneWeighted(weighted) ?? policyMoves[0]!;
-              return {
-                x: picked.x,
-                y: picked.y,
-                thoughts: `${reason}: fallback weighted policy (lower_bound ${lowerBound}, weaken_fac ${weakenFac}).`,
-              };
-            };
-
-            if (strategy === 'pick') {
-              const override = Math.max(0, settings.aiPickPickOverride);
-              const forced = shouldPlayTopMove(override);
-              if (forced) return { x: forced.move.x, y: forced.move.y, thoughts: forced.thoughts };
-
-              const nMoves = getPickNMoves(settings.aiPickPickFrac, settings.aiPickPickN, legalPolicyMoves.length);
-              const weightedCoords: WeightedCoord[] = legalPolicyMoves.map((m) => ({
-                score: m.prob,
-                weight: 1,
-                x: m.x,
-                y: m.y,
-              }));
-              return pickFromWeightedCoords(weightedCoords, nMoves, 'Pick');
-            }
-
-            if (strategy === 'local' || strategy === 'tenuki') {
-              const lastMove = latest.currentNode.move;
-              if (!lastMove || lastMove.x < 0 || lastMove.y < 0) {
-                return fallbackWeightedPolicy(strategy === 'local' ? 'Local: no previous move' : 'Tenuki: no previous move');
-              }
-
-              const override = Math.max(0, strategy === 'local' ? settings.aiLocalPickOverride : settings.aiTenukiPickOverride);
-              const forced = shouldPlayTopMove(override);
-              if (forced) return { x: forced.move.x, y: forced.move.y, thoughts: forced.thoughts };
-
-              const boardSquares = boardSize * boardSize;
-              const depth = latest.moveHistory.length;
-              const endgame = Math.max(0, strategy === 'local' ? settings.aiLocalEndgame : settings.aiTenukiEndgame);
-              const pickFrac = strategy === 'local' ? settings.aiLocalPickFrac : settings.aiTenukiPickFrac;
-              const pickN = strategy === 'local' ? settings.aiLocalPickN : settings.aiTenukiPickN;
-
-              if (depth > endgame * boardSquares) {
-                const baseN = getPickNMoves(pickFrac, pickN, legalPolicyMoves.length);
-                const nMoves = Math.floor(Math.max(baseN, Math.floor(legalPolicyMoves.length / 2)));
-                const endCoords: WeightedCoord[] = legalPolicyMoves.map((m) => ({
-                  score: m.prob,
-                  weight: 1,
-                  x: m.x,
-                  y: m.y,
-                }));
-                return pickFromWeightedCoords(endCoords, nMoves, strategy === 'local' ? 'Local endgame' : 'Tenuki endgame');
-              }
-
-              const stddev = Math.max(0, strategy === 'local' ? settings.aiLocalStddev : settings.aiTenukiStddev);
-              const var_ = stddev * stddev;
-              if (!(var_ > 0)) {
-                return fallbackWeightedPolicy(strategy === 'local' ? 'Local: stddev <= 0' : 'Tenuki: stddev <= 0');
-              }
-
-              const weightedCoords: WeightedCoord[] = legalPolicyMoves.map((m) => {
-                const dx = m.x - lastMove.x;
-                const dy = m.y - lastMove.y;
-                const gaussian = Math.exp(-0.5 * (dx * dx + dy * dy) / var_);
-                const w = strategy === 'tenuki' ? 1 - gaussian : gaussian;
-                return {
-                  score: m.prob,
-                  weight: Number.isFinite(w) ? Math.max(0, w) : 0,
-                  x: m.x,
-                  y: m.y,
-                };
-              });
-
-              const nMoves = getPickNMoves(pickFrac, pickN, legalPolicyMoves.length);
-              return pickFromWeightedCoords(weightedCoords, nMoves, strategy === 'local' ? 'Local' : 'Tenuki');
-            }
-
-            if (strategy === 'influence' || strategy === 'territory') {
-              const override = Math.max(0, strategy === 'influence' ? settings.aiInfluencePickOverride : settings.aiTerritoryPickOverride);
-              const forced = shouldPlayTopMove(override);
-              if (forced) return { x: forced.move.x, y: forced.move.y, thoughts: forced.thoughts };
-
-              const boardSquares = boardSize * boardSize;
-              const depth = latest.moveHistory.length;
-              const endgame = Math.max(0, strategy === 'influence' ? settings.aiInfluenceEndgame : settings.aiTerritoryEndgame);
-              const pickFrac = strategy === 'influence' ? settings.aiInfluencePickFrac : settings.aiTerritoryPickFrac;
-              const pickN = strategy === 'influence' ? settings.aiInfluencePickN : settings.aiTerritoryPickN;
-
-              if (depth > endgame * boardSquares) {
-                const baseN = getPickNMoves(pickFrac, pickN, legalPolicyMoves.length);
-                const nMoves = Math.floor(Math.max(baseN, Math.floor(legalPolicyMoves.length / 2)));
-                const endCoords: WeightedCoord[] = legalPolicyMoves.map((m) => ({
-                  score: m.prob,
-                  weight: 1,
-                  x: m.x,
-                  y: m.y,
-                }));
-                return pickFromWeightedCoords(endCoords, nMoves, strategy === 'influence' ? 'Influence endgame' : 'Territory endgame');
-              }
-
-              const threshold = Math.max(0, strategy === 'influence' ? settings.aiInfluenceThreshold : settings.aiTerritoryThreshold);
-              const lineWeightRaw = strategy === 'influence' ? settings.aiInfluenceLineWeight : settings.aiTerritoryLineWeight;
-              const lineWeight = Math.max(1, lineWeightRaw);
-              const thrLine = threshold - 1;
-
-              const weightedCoords: WeightedCoord[] = legalPolicyMoves.map((m) => {
-                const distX = Math.min(boardSize - 1 - m.x, m.x);
-                const distY = Math.min(boardSize - 1 - m.y, m.y);
-
-                let exponent = 0;
-                if (strategy === 'influence') {
-                  exponent = Math.max(0, thrLine - distX) + Math.max(0, thrLine - distY);
-                } else {
-                  const distMin = Math.min(distX, distY);
-                  exponent = Math.max(0, distMin - thrLine);
-                }
-
-                const w = Math.pow(1 / lineWeight, exponent);
-                return {
-                  score: m.prob,
-                  weight: Number.isFinite(w) ? Math.max(0, w) : 0,
-                  x: m.x,
-                  y: m.y,
-                };
-              });
-
-              const nMoves = getPickNMoves(pickFrac, pickN, legalPolicyMoves.length);
-              return pickFromWeightedCoords(weightedCoords, nMoves, strategy === 'influence' ? 'Influence' : 'Territory');
-            }
-
-            if (strategy === 'rank') {
-              const kyuRank = settings.aiRankKyu;
-              const boardSquares = boardSize * boardSize;
-              const legalPolicyMoves = policyMoves.filter((m) => !m.isPass && m.prob > 0);
-              const normLegMoves = legalPolicyMoves.length / boardSquares;
-
-              const origCalibAveModRank =
-                0.063015 + (0.7624 * boardSquares) / Math.pow(10, -0.05737 * kyuRank + 1.9482);
-
-              const exponentTerm =
-                3.002 * normLegMoves * normLegMoves - normLegMoves - 0.034889 * kyuRank - 0.5097;
-
-              const modifiedCalibAveModRank =
-                (0.3931 +
-                  0.6559 * normLegMoves * Math.exp(-1 * exponentTerm * exponentTerm) -
-                  0.01093 * kyuRank) *
-                origCalibAveModRank;
-
-              const denominator = 1.31165 * (modifiedCalibAveModRank + 1) - 0.082653;
-              const nMoves = Math.max(1, Math.round((boardSquares * normLegMoves) / denominator));
-
-              const ratio = (boardSquares - legalPolicyMoves.length) / boardSquares;
-              const override = 0.8 * (1 - 0.5 * ratio);
-              const overridetwo = 0.85 + Math.max(0, 0.02 * (kyuRank - 8));
-
-              const forced = shouldPlayTopMove(override, overridetwo);
-              if (forced) return { x: forced.move.x, y: forced.move.y, thoughts: forced.thoughts };
-
-              const sampled = weightedSampleWithoutReplacement(legalPolicyMoves, nMoves, () => 1);
-              sampled.sort((a, b) => b.prob - a.prob);
-              const picked = sampled[0] ?? null;
-
-              if (!picked) {
-                const top = policyMoves[0]!;
-                return { x: top.x, y: top.y, thoughts: 'Rank: no legal policy moves; playing top policy move.' };
-              }
-
-              if (passProb > picked.prob) {
-                const top = policyMoves[0]!;
-                return {
-                  x: top.x,
-                  y: top.y,
-                  thoughts: `Rank: pass prob ${(passProb * 100).toFixed(1)}% > picked ${(picked.prob * 100).toFixed(1)}%; playing top policy move.`,
-                };
-              }
-
-              return {
-                x: picked.x,
-                y: picked.y,
-                thoughts: `Rank picked from ${Math.min(nMoves, legalPolicyMoves.length)} sampled moves (kyu ${kyuRank}).`,
-              };
-            }
-
-            if (strategy === 'policy') {
-              const openingMoves = Math.max(0, settings.aiPolicyOpeningMoves);
-              const depth = latest.moveHistory.length;
-              if (depth <= openingMoves) {
-                const weakenFac = 1.0;
-                const lowerBound = 0.02;
-                const override = 0.9;
-                const forced = shouldPlayTopMove(override);
-                if (forced) {
-                  return { x: forced.move.x, y: forced.move.y, thoughts: forced.thoughts };
-                }
-                const weighted = policyMoves
-                  .filter((m) => !m.isPass && m.prob > lowerBound)
-                  .map((m) => ({ weight: Math.pow(m.prob, 1 / weakenFac), value: m }));
-                const picked = pickOneWeighted(weighted) ?? policyMoves[0]!;
-                return {
-                  x: picked.x,
-                  y: picked.y,
-                  thoughts: `Policy opening: picked weighted policy move (depth ${depth} ≤ ${openingMoves}).`,
-                };
-              }
-              const top = policyMoves[0]!;
-              return {
-                x: top.x,
-                y: top.y,
-                thoughts: top5Pass ? 'Playing top policy move because pass is in top 5.' : 'Playing top policy move.',
-              };
-            }
-
-            if (strategy === 'weighted') {
-              const weakenFac = Math.max(0.01, settings.aiWeightedWeakenFac);
-              const lowerBound = Math.max(0, settings.aiWeightedLowerBound);
-              const override = Math.max(0, settings.aiWeightedPickOverride);
-
-              const forced = shouldPlayTopMove(override);
-              if (forced) return { x: forced.move.x, y: forced.move.y, thoughts: forced.thoughts };
-
-              const weighted = policyMoves
-                .filter((m) => !m.isPass && m.prob > lowerBound)
-                .map((m) => ({ weight: Math.pow(m.prob, 1 / weakenFac), value: m }));
-              const picked = pickOneWeighted(weighted);
-              const move = picked ?? policyMoves[0]!;
-              return {
-                x: move.x,
-                y: move.y,
-                thoughts:
-                  picked
-                    ? `Weighted picked random policy move (lower_bound ${lowerBound}, weaken_fac ${weakenFac}).`
-                    : 'Weighted fallback to top policy move.',
-              };
-            }
-
-            if (!best) return null;
-            return { x: best.x, y: best.y, thoughts: `Fallback to top move ${bestLabel}.` };
-          };
-
-          const chosen = chooseByStrategy();
-          if (!chosen) {
+          const moves = analysisWithTerritory.moves ?? [];
+          const best = moves.find((m) => m.order === 0) ?? moves[0] ?? null;
+          if (!best) {
             makeHeuristicMove(get());
             set({ isAiThinking: false });
             return;
           }
-          if (chosen.x === -1 || chosen.y === -1) get().passTurn();
-          else get().playMove(chosen.x, chosen.y);
+          if (best.x < 0 || best.y < 0) get().passTurn();
+          else get().playMove(best.x, best.y);
 
           const after = get();
           // playMove invalidates the request epoch because it changes the
           // visible position; the move itself has already been committed.
           set({ isAiThinking: false });
-          after.currentNode.aiThoughts = chosen.thoughts;
+          const bestLabel =
+            best.x < 0 || best.y < 0
+              ? 'pass'
+              : `${String.fromCharCode(65 + (best.x >= 8 ? best.x + 1 : best.x))}${boardSize - best.y}`;
+          after.currentNode.aiThoughts = `Played the top move ${bestLabel}.`;
           set((s) => ({ treeVersion: s.treeVersion + 1 }));
         })
         .catch((err) => {

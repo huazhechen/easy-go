@@ -46,7 +46,7 @@ call actions from `useGameStore`.
 - UI modes such as analysis, continuous analysis, teach mode, insert/edit mode,
   region of interest selection, AI play, and game analysis progress.
 - Settings, including model URL, TensorFlow.js backend preference, visits,
-  board theme, locale, timer settings, trainer thresholds, and AI strategy.
+  board theme, locale, timer settings, and trainer thresholds.
 - Persistence hooks for settings, library state, current-game auto-save, and
   uploaded model state.
 
