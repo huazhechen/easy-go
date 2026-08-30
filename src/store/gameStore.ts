@@ -271,12 +271,6 @@ const loadStoredSettings = (): Partial<GameSettings> | null => {
     if (!parsed || typeof parsed !== 'object') return null;
     // An uploaded human net lives in a blob: URL that dies with the page, so a
     // stored one would only produce a failing fetch on the next load.
-    if ('humanSlModelUrl' in parsed) {
-      const stored = (parsed as { humanSlModelUrl?: unknown }).humanSlModelUrl;
-      if (typeof stored !== 'string' || /^blob:/i.test(stored.trim())) {
-        delete (parsed as { humanSlModelUrl?: unknown }).humanSlModelUrl;
-      }
-    }
     if ('katagoModelUrl' in parsed) {
       const normalized = normalizeModelUrl((parsed as { katagoModelUrl?: unknown }).katagoModelUrl);
       if (normalized) {
