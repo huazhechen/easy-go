@@ -1,6 +1,4 @@
-import { useState } from 'react';
-
-export type HintMode = 'off' | 'peek' | 'always';
+import { useTriStateMode } from './useTriStateMode';
 
 /**
  * Recommendation-hint visibility. "peek" (仅本手) shows the hints for the
@@ -8,22 +6,11 @@ export type HintMode = 'off' | 'peek' | 'always';
  * keeps them on until the player turns them off.
  */
 export function useHintMode(moveCount: number, onEnable: () => void) {
-  const [hintMode, setHintMode] = useState<HintMode>('off');
-  const [lastMoveCount, setLastMoveCount] = useState(moveCount);
-
-  // History navigation and undos leave a peek active; only a new move ends it.
-  if (hintMode === 'peek' && moveCount > lastMoveCount) {
-    setLastMoveCount(moveCount);
-    setHintMode('off');
-  } else if (lastMoveCount !== moveCount) {
-    setLastMoveCount(moveCount);
-  }
-
-  const cycleHintMode = () => {
-    const next: HintMode = hintMode === 'off' ? 'peek' : hintMode === 'peek' ? 'always' : 'off';
-    setHintMode(next);
-    if (next !== 'off') onEnable();
-  };
-
-  return { hintMode, hintsVisible: hintMode !== 'off', cycleHintMode };
+  const { mode: hintMode, cycle } = useTriStateMode({
+    key: moveCount,
+    // History navigation and undos leave a peek active; only a new move ends it.
+    expirePeekOn: (previous, next) => next > previous,
+    onEnable,
+  });
+  return { hintMode, hintsVisible: hintMode !== 'off', cycleHintMode: cycle };
 }

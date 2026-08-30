@@ -1,13 +1,12 @@
 import { FaCalculator, FaFlag, FaLightbulb, FaUndo } from 'react-icons/fa';
-import type { HintMode } from '../hooks/useHintMode';
-import type { ScoreMode } from '../hooks/useScoreJudgment';
+import type { TriStateMode } from '../hooks/useTriStateMode';
 
 interface BattleActionsProps {
   canUndo: boolean;
   disabled: boolean;
   lastMoveWasPass: boolean;
-  hintMode: HintMode;
-  scoreMode: ScoreMode;
+  hintMode: TriStateMode;
+  scoreMode: TriStateMode;
   recommendationLabel: string;
   showThinkingSpinner: boolean;
   onUndo: () => void;

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { countTerritoryPoints, formatScoreResult, type ScoreResult } from '../utils/territoryScore';
-
-export type ScoreMode = 'off' | 'peek' | 'always';
+import { useTriStateMode } from './useTriStateMode';
 
 /**
  * Score judgment renders whatever the store's cheap network-only read already
@@ -19,20 +18,16 @@ export function useScoreJudgment() {
   const quickEvalData = useGameStore((state) => state.quickEvalData);
   const runQuickEval = useGameStore((state) => state.runQuickEval);
 
-  const [scoreMode, setScoreMode] = useState<ScoreMode>('off');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-  const [lastPositionKey, setLastPositionKey] = useState(positionKey);
-  const [lastPlayer, setLastPlayer] = useState(currentPlayer);
-
-  // A position change invalidates an older judgment, and a temporary judgment
-  // expires like a peek hint.
-  if (lastPositionKey !== positionKey || lastPlayer !== currentPlayer) {
-    setLastPositionKey(positionKey);
-    setLastPlayer(currentPlayer);
+  const { mode: scoreMode, cycle, keyChanged } = useTriStateMode({
+    key: `${positionKey}|${currentPlayer}`,
+    // Any position change invalidates an older judgment.
+    expirePeekOn: () => true,
+  });
+  if (keyChanged) {
     setDialogOpen(false);
     setDismissed(false);
-    if (scoreMode === 'peek') setScoreMode('off');
   }
 
   const current = quickEvalData?.nodeId === positionKey ? quickEvalData.result : null;
@@ -51,7 +46,7 @@ export function useScoreJudgment() {
 
   const cycleScoreMode = () => {
     setDismissed(false);
-    setScoreMode((prev) => (prev === 'off' ? 'peek' : prev === 'peek' ? 'always' : 'off'));
+    cycle();
   };
 
   const dismissScore = () => setDismissed(true);

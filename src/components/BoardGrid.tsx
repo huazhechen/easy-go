@@ -3,7 +3,7 @@ import type { BoardState, CandidateMove, Move, Player } from '../types';
 import { isValidMove } from '../utils/gameLogic';
 import { columnLabel, getBoardGeometry, linePosition, pointPosition } from '../utils/boardGeometry';
 import { percent } from '../utils/format';
-import type { HintMode } from '../hooks/useHintMode';
+import type { TriStateMode } from '../hooks/useTriStateMode';
 
 interface BoardGridProps {
   board: BoardState;
@@ -12,7 +12,7 @@ interface BoardGridProps {
   previousBoard: BoardState | undefined;
   /** Top recommendation moves (already trimmed to the desired rank count). */
   hints: CandidateMove[];
-  hintMode: HintMode;
+  hintMode: TriStateMode;
   showTerritory: boolean;
   territory: number[][];
   /** True while the AI is thinking (scanline shows and clicks are ignored). */
