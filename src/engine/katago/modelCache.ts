@@ -66,7 +66,7 @@ function toArrayBuffer(value: unknown): ArrayBuffer | null {
 /**
  * Normalizes fetched model bytes to the decompressed KataGo `.bin` form.
  *
- * Static hosts (Vite dev, GitHub Pages, Netlify, …) commonly serve `.gz`
+ * Static hosts (Vite dev, Cloudflare, …) commonly serve `.gz`
  * files with `Content-Encoding: gzip`, which makes the browser transparently
  * decompress the response before fetch resolves it. Normalizing here means
  * validation, caching and parsing all see the same bytes no matter which

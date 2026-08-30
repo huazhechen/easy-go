@@ -96,20 +96,12 @@ describe('KataGo engine client', () => {
       moveHistory: [],
       komi: 6.5,
     });
-    const second = client.evaluate({
-      modelUrl: '/models/katago-small.bin.gz',
-      board: [[null]],
-      currentPlayer: 'black',
-      moveHistory: [],
-      komi: 6.5,
-    });
     await flushMicrotasks();
     expect(createdFakeWorkers).toHaveLength(1);
 
     createdFakeWorkers[0]!.onerror?.({ message: 'script load failed' });
 
     await expect(first).rejects.toThrow(/KataGo worker crashed: script load failed/);
-    await expect(second).rejects.toThrow(/KataGo worker crashed: script load failed/);
   });
 
   it('fails fast on requests made after a crash until the worker responds again', async () => {

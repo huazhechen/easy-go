@@ -7,21 +7,19 @@ import { setThreadsCount, setWasmPaths } from '@tensorflow/tfjs-backend-wasm';
 
 import type { KataGoAnalyzeRequest, KataGoWorkerRequest, KataGoWorkerResponse } from './types';
 import { looksLikeMarkup, modelResponseError } from './modelResponse';
-import type { GameRules, KataGoBackendPreference, Player, RegionOfInterest } from '../../types';
+import type { GameRules, KataGoBackendPreference } from '../../types';
 import { publicUrl } from '../../utils/publicUrl';
 import { getAnimationNow } from '../../utils/animationFrame';
 import { parseKataGoModelV8 } from './loadModelV8';
 import { KataGoModelV8Tf } from './modelV8';
 import { ENGINE_MAX_TIME_MS, ENGINE_MAX_VISITS } from './limits';
 import { MctsSearch, rootSymmetrySamplesForBackend, type OwnershipMode } from './analyzeMcts';
-import { fillInputsV7FastForPosition } from './positionInputsV7';
 import {
   getKataGoWarmupFallbackBackend,
   normalizeKataGoBackendPreference,
   shouldCacheKataGoFallbackForRequest,
 } from './backendFallback';
 import { BOARD_AREA, BOARD_SIZE, PASS_MOVE, setBoardSize } from './fastBoard';
-import { postprocessKataGoV8 } from './evalV8';
 import { md5Hex } from '../../utils/md5';
 import {
   expectedModelMd5,
@@ -52,41 +50,8 @@ const B10_MODEL_URLS: string[] = B10_TIER
   : [];
 const isDefaultB10ModelUrl = (url: string): boolean => B10_MODEL_URLS.includes(url);
 
-let V7_SPATIAL_STRIDE = BOARD_AREA * 22;
-const V7_GLOBAL_STRIDE = 19;
-
-let evalSpatialV7 = new Float32Array(V7_SPATIAL_STRIDE);
-let evalGlobalV7 = new Float32Array(V7_GLOBAL_STRIDE);
-
-let evalBatchCapacity = 0;
-let evalBatchSpatialV7 = new Float32Array(0);
-let evalBatchGlobalV7 = new Float32Array(0);
 let scratchBoardSize = BOARD_SIZE;
 type ParsedKataGoModelV8 = ReturnType<typeof parseKataGoModelV8>;
-
-function regionKey(roi?: RegionOfInterest | null): string | null {
-  if (!roi) return null;
-  const xMin = Math.max(0, Math.min(BOARD_SIZE - 1, Math.min(roi.xMin, roi.xMax)));
-  const xMax = Math.max(0, Math.min(BOARD_SIZE - 1, Math.max(roi.xMin, roi.xMax)));
-  const yMin = Math.max(0, Math.min(BOARD_SIZE - 1, Math.min(roi.yMin, roi.yMax)));
-  const yMax = Math.max(0, Math.min(BOARD_SIZE - 1, Math.max(roi.yMin, roi.yMax)));
-  const isSinglePoint = xMin === xMax && yMin === yMax;
-  const isWholeBoard = xMin === 0 && yMin === 0 && xMax === BOARD_SIZE - 1 && yMax === BOARD_SIZE - 1;
-  if (isSinglePoint || isWholeBoard) return null;
-  return `${xMin},${xMax},${yMin},${yMax}`;
-}
-
-function getEvalBatchBuffersV7(batch: number): { spatial: Float32Array; global: Float32Array } {
-  if (batch > evalBatchCapacity) {
-    evalBatchCapacity = batch;
-    evalBatchSpatialV7 = new Float32Array(batch * V7_SPATIAL_STRIDE);
-    evalBatchGlobalV7 = new Float32Array(batch * V7_GLOBAL_STRIDE);
-  }
-  return {
-    spatial: evalBatchSpatialV7.subarray(0, batch * V7_SPATIAL_STRIDE),
-    global: evalBatchGlobalV7.subarray(0, batch * V7_GLOBAL_STRIDE),
-  };
-}
 
 let search: MctsSearch | null = null;
 let searchKey: {
@@ -105,8 +70,6 @@ let searchKey: {
   rules: GameRules;
   nnRandomize: boolean;
   conservativePass: boolean;
-  roiKey: string | null;
-  avoidKey: string | null;
 } | null = null;
 const latestAnalyzeByGroup = new Map<string, number>();
 let interactiveToken = 0;
@@ -123,12 +86,6 @@ function ensureBoardSizeForWorker(boardSize: number): void {
   if (boardSize === scratchBoardSize) return;
   setBoardSize(boardSize);
   scratchBoardSize = BOARD_SIZE;
-  V7_SPATIAL_STRIDE = BOARD_AREA * 22;
-  evalSpatialV7 = new Float32Array(V7_SPATIAL_STRIDE);
-  evalGlobalV7 = new Float32Array(V7_GLOBAL_STRIDE);
-  evalBatchCapacity = 0;
-  evalBatchSpatialV7 = new Float32Array(0);
-  evalBatchGlobalV7 = new Float32Array(0);
   search = null;
   searchKey = null;
 }
@@ -400,141 +357,6 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
     return;
   }
 
-  if (msg.type === 'katago:eval') {
-    await ensureModel(msg.modelUrl, msg.backend);
-    if (!model) throw new Error('Model not loaded');
-    ensureBoardSizeForWorker(msg.board.length);
-    const boardSize = BOARD_SIZE;
-
-    const conservativePass = msg.conservativePass !== false;
-    const rules: GameRules = msg.rules === 'chinese' ? 'chinese' : msg.rules === 'korean' ? 'korean' : 'japanese';
-
-    fillInputsV7FastForPosition({
-      board: msg.board,
-      previousBoard: msg.previousBoard,
-      previousPreviousBoard: msg.previousPreviousBoard,
-      currentPlayer: msg.currentPlayer,
-      moveHistory: msg.moveHistory,
-      komi: msg.komi,
-      rules,
-      conservativePassAndIsRoot: conservativePass,
-      outSpatial: evalSpatialV7,
-      outGlobal: evalGlobalV7,
-    });
-
-    const spatial = tf.tensor4d(evalSpatialV7, [1, boardSize, boardSize, 22]);
-    const global = tf.tensor2d(evalGlobalV7, [1, 19]);
-    const out = model.forwardValueOnly(spatial, global);
-    const [valueLogitsArr, scoreValueArr] = await Promise.all([out.value.data(), out.scoreValue.data()]);
-    spatial.dispose();
-    global.dispose();
-    out.value.dispose();
-    out.scoreValue.dispose();
-
-    const evaled = postprocessKataGoV8({
-      nextPlayer: msg.currentPlayer,
-      valueLogits: valueLogitsArr,
-      scoreValue: scoreValueArr,
-      postProcessParams: model.postProcessParams,
-      modelVersion: model.modelVersion,
-    });
-
-    post({
-      type: 'katago:eval_result',
-      id: msg.id,
-      ok: true,
-      backend: tf.getBackend(),
-      modelName: loadedModelName,
-      eval: {
-        rootWinRate: evaled.blackWinProb,
-        rootScoreLead: evaled.blackScoreLead,
-        rootScoreSelfplay: evaled.blackScoreMean,
-        rootScoreStdev: evaled.blackScoreStdev,
-      },
-    });
-    return;
-  }
-
-  if (msg.type === 'katago:eval_batch') {
-    await ensureModel(msg.modelUrl, msg.backend);
-    if (!model) throw new Error('Model not loaded');
-
-    const conservativePass = msg.conservativePass !== false;
-    const rules: GameRules = msg.rules === 'chinese' ? 'chinese' : msg.rules === 'korean' ? 'korean' : 'japanese';
-
-    const batch = msg.positions.length;
-    if (batch <= 0) {
-      post({
-        type: 'katago:eval_batch_result',
-        id: msg.id,
-        ok: true,
-        backend: tf.getBackend(),
-        modelName: loadedModelName,
-        evals: [],
-      });
-      return;
-    }
-
-    const boardSize = msg.positions[0] ? msg.positions[0].board.length : BOARD_SIZE;
-    ensureBoardSizeForWorker(boardSize);
-    const size = BOARD_SIZE;
-
-    const { spatial: spatialBatch, global: globalBatch } = getEvalBatchBuffersV7(batch);
-
-    for (let i = 0; i < batch; i++) {
-      const pos = msg.positions[i]!;
-      fillInputsV7FastForPosition({
-        board: pos.board,
-        previousBoard: pos.previousBoard,
-        previousPreviousBoard: pos.previousPreviousBoard,
-        currentPlayer: pos.currentPlayer,
-        moveHistory: pos.moveHistory,
-        komi: pos.komi,
-        rules,
-        conservativePassAndIsRoot: conservativePass,
-        outSpatial: spatialBatch.subarray(i * V7_SPATIAL_STRIDE, (i + 1) * V7_SPATIAL_STRIDE),
-        outGlobal: globalBatch.subarray(i * V7_GLOBAL_STRIDE, (i + 1) * V7_GLOBAL_STRIDE),
-      });
-    }
-
-    const spatial = tf.tensor4d(spatialBatch, [batch, size, size, 22]);
-    const global = tf.tensor2d(globalBatch, [batch, 19]);
-    const out = model.forwardValueOnly(spatial, global);
-    const [valueLogitsArr, scoreValueArr] = await Promise.all([out.value.data(), out.scoreValue.data()]);
-    spatial.dispose();
-    global.dispose();
-    out.value.dispose();
-    out.scoreValue.dispose();
-
-    const scoreChannels = model.scoreValueChannels;
-    const evals = new Array(batch);
-    for (let i = 0; i < batch; i++) {
-      const evaled = postprocessKataGoV8({
-        nextPlayer: msg.positions[i]!.currentPlayer,
-        valueLogits: valueLogitsArr.subarray(i * 3, i * 3 + 3),
-        scoreValue: scoreValueArr.subarray(i * scoreChannels, i * scoreChannels + scoreChannels),
-        postProcessParams: model.postProcessParams,
-        modelVersion: model.modelVersion,
-      });
-      evals[i] = {
-        rootWinRate: evaled.blackWinProb,
-        rootScoreLead: evaled.blackScoreLead,
-        rootScoreSelfplay: evaled.blackScoreMean,
-        rootScoreStdev: evaled.blackScoreStdev,
-      };
-    }
-
-    post({
-      type: 'katago:eval_batch_result',
-      id: msg.id,
-      ok: true,
-      backend: tf.getBackend(),
-      modelName: loadedModelName,
-      evals,
-    });
-    return;
-  }
-
   if (msg.type === 'katago:analyze') {
     const meta = analyzeMeta.get(msg);
     const analysisGroup = meta?.analysisGroup ?? msg.analysisGroup ?? 'background';
@@ -573,8 +395,7 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
     const maxChildren = Math.max(4, Math.min(msg.maxChildren ?? 64, BOARD_AREA));
     const topK = Math.max(1, Math.min(msg.topK ?? 10, 50));
     const includeMovesOwnership = msg.includeMovesOwnership === true;
-    const requestedOwnershipMode: OwnershipMode = msg.ownershipMode ?? 'root';
-    const ownershipMode: OwnershipMode = includeMovesOwnership ? 'tree' : requestedOwnershipMode;
+    const ownershipMode: OwnershipMode = includeMovesOwnership ? 'tree' : (msg.ownershipMode ?? 'root');
     const analysisPvLen = Math.max(0, Math.min(msg.analysisPvLen ?? 15, 60));
     const wideRootNoise = Math.max(0, Math.min(msg.wideRootNoise ?? 0.04, 5));
     const rootPolicyTemperature = Math.max(0.01, Math.min(msg.rootPolicyTemperature ?? 1, 100));
@@ -583,7 +404,6 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
     const nnRandomize = msg.nnRandomize !== false;
     const rootSymmetrySamples = rootSymmetrySamplesForBackend(tf.getBackend());
     const conservativePass = msg.conservativePass !== false;
-    const roiKey = regionKey(msg.regionOfInterest);
     const reportEveryMsRaw = msg.reportDuringSearchEveryMs;
     const reportEveryMs =
       typeof reportEveryMsRaw === 'number' && Number.isFinite(reportEveryMsRaw)
@@ -591,47 +411,6 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
         : 0;
     const shouldReport = reportEveryMs > 0;
     const cloneBuffers = msg.reuseTree === true || shouldReport;
-
-    // KataGo avoidMoveUntilByLoc: how deep into the search each move stays off
-    // limits for each player, which is how an analysis answers "and if that move
-    // were not available?". An untilDepth of 1 bans it at the root alone.
-    const avoidParts: string[] = [];
-    let avoidMoveUntilBlack: Int32Array | null = null;
-    let avoidMoveUntilWhite: Int32Array | null = null;
-    const avoidArrayFor = (player: Player): Int32Array => {
-      if (player === 'black') return (avoidMoveUntilBlack ??= new Int32Array(BOARD_AREA + 1));
-      return (avoidMoveUntilWhite ??= new Int32Array(BOARD_AREA + 1));
-    };
-    const moveIndexOf = (move: { x: number; y: number }): number => {
-      if (move.x < 0 || move.y < 0) return BOARD_AREA;
-      if (move.x >= BOARD_SIZE || move.y >= BOARD_SIZE) return -1;
-      return move.y * BOARD_SIZE + move.x;
-    };
-    for (const move of msg.avoidMoves ?? []) {
-      const idx = moveIndexOf(move);
-      if (idx < 0) continue;
-      const untilDepth = Math.max(1, Math.min(Math.floor(move.untilDepth ?? 1), 1000));
-      const player: Player = move.player ?? msg.currentPlayer;
-      avoidArrayFor(player)[idx] = untilDepth;
-      avoidParts.push(`a${player[0]}${idx}:${untilDepth}`);
-    }
-    // allowMoves is the complement: everything else is off limits for that player.
-    for (const allow of msg.allowMoves ?? []) {
-      const player: Player = allow.player ?? msg.currentPlayer;
-      const untilDepth = Math.max(1, Math.min(Math.floor(allow.untilDepth ?? 1), 1000));
-      const allowed = new Set<number>();
-      for (const move of allow.moves) {
-        const idx = moveIndexOf(move);
-        if (idx >= 0) allowed.add(idx);
-      }
-      if (allowed.size === 0) continue;
-      const array = avoidArrayFor(player);
-      for (let p = 0; p <= BOARD_AREA; p++) {
-        if (!allowed.has(p)) array[p] = untilDepth;
-      }
-      avoidParts.push(`l${player[0]}${[...allowed].sort((x, y) => x - y).join(',')}:${untilDepth}`);
-    }
-    const avoidKey = avoidParts.length > 0 ? avoidParts.sort().join(' ') : null;
 
     const canReuse =
       msg.reuseTree === true &&
@@ -652,9 +431,7 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
       searchKey.rootSymmetrySamples === rootSymmetrySamples &&
       searchKey.rules === rules &&
       searchKey.nnRandomize === nnRandomize &&
-      searchKey.conservativePass === conservativePass &&
-      searchKey.roiKey === roiKey &&
-      searchKey.avoidKey === avoidKey;
+      searchKey.conservativePass === conservativePass;
 
     let reusedSearch = canReuse;
 
@@ -680,9 +457,7 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
         searchKey.rootSymmetrySamples === rootSymmetrySamples &&
         searchKey.rules === rules &&
         searchKey.nnRandomize === nnRandomize &&
-        searchKey.conservativePass === conservativePass &&
-        searchKey.roiKey === roiKey &&
-        searchKey.avoidKey === avoidKey;
+        searchKey.conservativePass === conservativePass;
 
       if (canReRoot) {
         const lastMove = msg.moveHistory[msg.moveHistory.length - 1] ?? null;
@@ -698,7 +473,6 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
             moveHistory: msg.moveHistory,
             komi: msg.komi,
             rules,
-            regionOfInterest: msg.regionOfInterest,
           });
           if (reRooted) {
             reusedSearch = true;
@@ -718,8 +492,6 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
               rules,
               nnRandomize,
               conservativePass,
-              roiKey,
-              avoidKey,
             };
           }
         }
@@ -744,9 +516,6 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
         rootPolicyTemperature,
         fillDameBeforePass,
         rootSymmetrySamples,
-        regionOfInterest: msg.regionOfInterest,
-        avoidMoveUntilBlack,
-        avoidMoveUntilWhite,
       });
       if (typeof msg.positionId === 'string') {
         searchKey = {
@@ -765,8 +534,6 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
           rules,
           nnRandomize,
           conservativePass,
-          roiKey,
-          avoidKey,
         };
       } else {
         searchKey = null;
@@ -888,24 +655,6 @@ self.onmessage = (ev: MessageEvent<KataGoWorkerRequest>) => {
       if (msg.type === 'katago:init') {
         post({
           type: 'katago:init_result',
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return;
-      }
-      if (msg.type === 'katago:eval') {
-        post({
-          type: 'katago:eval_result',
-          id: msg.id,
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return;
-      }
-      if (msg.type === 'katago:eval_batch') {
-        post({
-          type: 'katago:eval_batch_result',
-          id: msg.id,
           ok: false,
           error: err instanceof Error ? err.message : String(err),
         });

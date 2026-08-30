@@ -1,4 +1,4 @@
-import type { BoardState, FloatArray, GameRules, KataGoBackendPreference, Move, Player, RegionOfInterest } from '../../types';
+import type { BoardState, FloatArray, GameRules, KataGoBackendPreference, Move, Player } from '../../types';
 
 export interface KataGoInitRequest {
   type: 'katago:init';
@@ -31,7 +31,6 @@ export interface KataGoAnalyzeRequest {
   moveHistory: Move[];
   komi: number;
   rules?: GameRules;
-  regionOfInterest?: RegionOfInterest | null;
   topK?: number;
   analysisPvLen?: number;
   includeMovesOwnership?: boolean;
@@ -49,15 +48,7 @@ export interface KataGoAnalyzeRequest {
   reportDuringSearchEveryMs?: number;
   ownershipRefreshIntervalMs?: number;
   reuseTree?: boolean;
-  ownershipMode?: 'none' | 'root' | 'tree';
-  /**
-   * KataGo avoidMoves: moves the search may not play until `untilDepth` plies from
-   * the root. `untilDepth` defaults to 1, which bans the move at the root alone.
-   * `player` defaults to whoever is to move.
-   */
-  avoidMoves?: Array<{ x: number; y: number; player?: Player; untilDepth?: number }>;
-  /** KataGo allowMoves: the complement, at most one entry per player. */
-  allowMoves?: Array<{ moves: Array<{ x: number; y: number }>; player?: Player; untilDepth?: number }>;
+  ownershipMode?: 'root' | 'tree';
 }
 
 export interface KataGoAnalysisPayload {
@@ -128,72 +119,5 @@ export interface KataGoAnalyzeResponse {
   error?: string;
 }
 
-export interface KataGoEvalRequest {
-  type: 'katago:eval';
-  id: number;
-  modelUrl: string;
-  backend?: KataGoBackendPreference;
-  board: BoardState;
-  previousBoard?: BoardState;
-  previousPreviousBoard?: BoardState;
-  currentPlayer: Player;
-  moveHistory: Move[];
-  komi: number;
-  rules?: GameRules;
-  conservativePass?: boolean;
-}
-
-export interface KataGoEvalResponse {
-  type: 'katago:eval_result';
-  id: number;
-  ok: boolean;
-  backend?: string;
-  modelName?: string;
-  eval?: {
-    rootWinRate: number;
-    rootScoreLead: number;
-    rootScoreSelfplay: number;
-    rootScoreStdev: number;
-  };
-  error?: string;
-}
-
-export interface KataGoEvalBatchRequest {
-  type: 'katago:eval_batch';
-  id: number;
-  modelUrl: string;
-  backend?: KataGoBackendPreference;
-  positions: Array<{
-    board: BoardState;
-    previousBoard?: BoardState;
-    previousPreviousBoard?: BoardState;
-    currentPlayer: Player;
-    moveHistory: Move[];
-    komi: number;
-  }>;
-  rules?: GameRules;
-  conservativePass?: boolean;
-}
-
-export interface KataGoEvalBatchResponse {
-  type: 'katago:eval_batch_result';
-  id: number;
-  ok: boolean;
-  backend?: string;
-  modelName?: string;
-  evals?: Array<{
-    rootWinRate: number;
-    rootScoreLead: number;
-    rootScoreSelfplay: number;
-    rootScoreStdev: number;
-  }>;
-  error?: string;
-}
-
-export type KataGoWorkerRequest = KataGoInitRequest | KataGoAnalyzeRequest | KataGoEvalRequest | KataGoEvalBatchRequest;
-export type KataGoWorkerResponse =
-  | KataGoInitResponse
-  | KataGoAnalyzeUpdate
-  | KataGoAnalyzeResponse
-  | KataGoEvalResponse
-  | KataGoEvalBatchResponse;
+export type KataGoWorkerRequest = KataGoInitRequest | KataGoAnalyzeRequest;
+export type KataGoWorkerResponse = KataGoInitResponse | KataGoAnalyzeUpdate | KataGoAnalyzeResponse;

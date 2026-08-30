@@ -1,10 +1,8 @@
 import type { KataGoWorkerRequest, KataGoWorkerResponse } from './types';
-import type { BoardState, GameRules, KataGoBackendPreference, Move, Player, RegionOfInterest } from '../../types';
+import type { BoardState, GameRules, KataGoBackendPreference, Move, Player } from '../../types';
 import { getWorkerConstructor } from '../../utils/browserWorker';
 
 type Analysis = NonNullable<Extract<KataGoWorkerResponse, { type: 'katago:analyze_result' }>['analysis']>;
-type EvalResult = NonNullable<Extract<KataGoWorkerResponse, { type: 'katago:eval_result' }>['eval']>;
-type EvalBatchResult = NonNullable<Extract<KataGoWorkerResponse, { type: 'katago:eval_batch_result' }>['evals']>;
 
 const takeLastMoves = (moves: Move[]): Move[] => (moves.length <= 5 ? moves : moves.slice(moves.length - 5));
 
@@ -33,8 +31,6 @@ class KataGoEngineClient {
     number,
     { resolve: (a: Analysis) => void; reject: (e: Error) => void; onProgress?: (a: Analysis) => void }
   >();
-  private pendingEval = new Map<number, { resolve: (e: EvalResult) => void; reject: (e: Error) => void }>();
-  private pendingEvalBatch = new Map<number, { resolve: (e: EvalBatchResult) => void; reject: (e: Error) => void }>();
   private backend: string | null = null;
   private modelName: string | null = null;
   private lastLoggedEngineLabel: string | null = null;
@@ -88,23 +84,6 @@ class KataGoEngineClient {
         else pending.resolve(msg.analysis);
         return;
       }
-      if (msg.type === 'katago:eval_result') {
-        const pending = this.pendingEval.get(msg.id);
-        if (!pending) return;
-        this.pendingEval.delete(msg.id);
-        this.syncEngineInfo(msg);
-        if (!msg.ok || !msg.eval) pending.reject(new Error(msg.error ?? 'Eval failed'));
-        else pending.resolve(msg.eval);
-        return;
-      }
-      if (msg.type === 'katago:eval_batch_result') {
-        const pending = this.pendingEvalBatch.get(msg.id);
-        if (!pending) return;
-        this.pendingEvalBatch.delete(msg.id);
-        this.syncEngineInfo(msg);
-        if (!msg.ok || !msg.evals) pending.reject(new Error(msg.error ?? 'Eval batch failed'));
-        else pending.resolve(msg.evals);
-      }
     };
 
     // Without these handlers a worker that dies mid-request (script load
@@ -136,13 +115,7 @@ class KataGoEngineClient {
     }
     const pendingAnalyze = [...this.pending.values()];
     this.pending.clear();
-    const pendingEval = [...this.pendingEval.values()];
-    this.pendingEval.clear();
-    const pendingEvalBatch = [...this.pendingEvalBatch.values()];
-    this.pendingEvalBatch.clear();
     for (const entry of pendingAnalyze) entry.reject(error);
-    for (const entry of pendingEval) entry.reject(error);
-    for (const entry of pendingEvalBatch) entry.reject(error);
   }
 
   private rejectIfCrashed(): void {
@@ -223,7 +196,6 @@ class KataGoEngineClient {
     moveHistory: Move[];
     komi: number;
     rules?: GameRules;
-    regionOfInterest?: RegionOfInterest | null;
     topK?: number;
     analysisPvLen?: number;
     includeMovesOwnership?: boolean;
@@ -237,11 +209,9 @@ class KataGoEngineClient {
     reportDuringSearchEveryMs?: number;
     ownershipRefreshIntervalMs?: number;
     reuseTree?: boolean;
-    ownershipMode?: 'none' | 'root' | 'tree';
+    ownershipMode?: 'root' | 'tree';
     rootPolicyTemperature?: number;
     fillDameBeforePass?: boolean;
-    avoidMoves?: Array<{ x: number; y: number; player?: Player; untilDepth?: number }>;
-    allowMoves?: Array<{ moves: Array<{ x: number; y: number }>; player?: Player; untilDepth?: number }>;
     onProgress?: (analysis: Analysis) => void;
   }): Promise<Analysis> {
     this.rejectIfCrashed();
@@ -263,7 +233,6 @@ class KataGoEngineClient {
       moveHistory: takeLastMoves(args.moveHistory),
       komi: args.komi,
       rules: args.rules,
-      regionOfInterest: args.regionOfInterest,
       topK: args.topK,
       analysisPvLen: args.analysisPvLen,
       includeMovesOwnership: args.includeMovesOwnership,
@@ -280,8 +249,6 @@ class KataGoEngineClient {
       ownershipMode: args.ownershipMode,
       rootPolicyTemperature: args.rootPolicyTemperature,
       fillDameBeforePass: args.fillDameBeforePass,
-      avoidMoves: args.avoidMoves,
-      allowMoves: args.allowMoves,
     };
     const promise = new Promise<Analysis>((resolve, reject) => {
       this.pending.set(id, { resolve, reject, onProgress: args.onProgress });
@@ -295,89 +262,6 @@ class KataGoEngineClient {
     return promise;
   }
 
-  async evaluate(args: {
-    modelUrl: string;
-    backend?: KataGoBackendPreference;
-    board: BoardState;
-    previousBoard?: BoardState;
-    previousPreviousBoard?: BoardState;
-    currentPlayer: Player;
-    moveHistory: Move[];
-    komi: number;
-    rules?: GameRules;
-    conservativePass?: boolean;
-  }): Promise<EvalResult> {
-    this.rejectIfCrashed();
-    const id = this.nextId++;
-    const req: KataGoWorkerRequest = {
-      type: 'katago:eval',
-      id,
-      modelUrl: args.modelUrl,
-      backend: args.backend,
-      board: args.board,
-      previousBoard: args.previousBoard,
-      previousPreviousBoard: args.previousPreviousBoard,
-      currentPlayer: args.currentPlayer,
-      moveHistory: takeLastMoves(args.moveHistory),
-      komi: args.komi,
-      rules: args.rules,
-      conservativePass: args.conservativePass,
-    };
-    const promise = new Promise<EvalResult>((resolve, reject) => {
-      this.pendingEval.set(id, { resolve, reject });
-    });
-    try {
-      this.postToWorker(req);
-    } catch (err) {
-      this.pendingEval.delete(id);
-      throw err;
-    }
-    return promise;
-  }
-
-  async evaluateBatch(args: {
-    modelUrl: string;
-    backend?: KataGoBackendPreference;
-    positions: Array<{
-      board: BoardState;
-      previousBoard?: BoardState;
-      previousPreviousBoard?: BoardState;
-      currentPlayer: Player;
-      moveHistory: Move[];
-      komi: number;
-    }>;
-    rules?: GameRules;
-    conservativePass?: boolean;
-  }): Promise<EvalBatchResult> {
-    this.rejectIfCrashed();
-    const id = this.nextId++;
-    const req: KataGoWorkerRequest = {
-      type: 'katago:eval_batch',
-      id,
-      modelUrl: args.modelUrl,
-      backend: args.backend,
-      positions: args.positions.map((p) => ({
-        board: p.board,
-        previousBoard: p.previousBoard,
-        previousPreviousBoard: p.previousPreviousBoard,
-        currentPlayer: p.currentPlayer,
-        moveHistory: takeLastMoves(p.moveHistory),
-        komi: p.komi,
-      })),
-      rules: args.rules,
-      conservativePass: args.conservativePass,
-    };
-    const promise = new Promise<EvalBatchResult>((resolve, reject) => {
-      this.pendingEvalBatch.set(id, { resolve, reject });
-    });
-    try {
-      this.postToWorker(req);
-    } catch (err) {
-      this.pendingEvalBatch.delete(id);
-      throw err;
-    }
-    return promise;
-  }
 }
 
 let singleton: KataGoEngineClient | null = null;

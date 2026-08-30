@@ -9,7 +9,7 @@ function getBrowserStorage(): Storage | null {
   }
 }
 
-export function getLocalStorage(): Storage | null {
+function getLocalStorage(): Storage | null {
   return getBrowserStorage();
 }
 

@@ -1,8 +1,9 @@
 # Deployment
 
 Easy Go is a static Vite app. A production build emits `dist/`, which can be
-served by GitHub Pages or any static host that can serve JavaScript, WASM,
-and compressed model files.
+served by any static host that can serve JavaScript, WASM, and compressed model
+files. The repository deploys to Cloudflare Workers with the static assets
+served from the bundled Worker.
 
 ## Build
 
@@ -30,11 +31,10 @@ npm run preview
 
 1. `VITE_BASE_URL`
 2. `BASE_URL`
-3. The GitHub repository name from `GITHUB_REPOSITORY`
-4. `/`
+3. `/`
 
-The value is normalized to start and end with `/`. For a repository named
-`easy-go`, GitHub Pages builds use `/easy-go/`.
+The value is normalized to start and end with `/`. Cloudflare deploys from the
+site root.
 
 Use an explicit base path when deploying somewhere unusual:
 
@@ -42,21 +42,19 @@ Use an explicit base path when deploying somewhere unusual:
 VITE_BASE_URL=/my/path/ npm run build
 ```
 
-## GitHub Pages
+## Cloudflare Worker
 
-The repository includes `.github/workflows/deploy-pages.yml`. On pushes to
+The repository includes `.github/workflows/deploy-worker.yml`. On pushes to
 `main` or manual dispatch, it:
 
-1. Checks out the repository with LFS enabled.
-2. Sets up Node 24 with npm caching.
-3. Runs `npm ci`.
-4. Runs `npm run build`.
-5. Uploads `dist/` as a Pages artifact.
-6. Deploys through `actions/deploy-pages`.
+1. Sets up Node 24 with npm caching.
+2. Runs `npm ci`.
+3. Runs `npm run build`.
+4. Runs `npx wrangler deploy`.
 
-The current live URL is:
-
-https://huazhechen.github.io/easy-go/
+`wrangler.jsonc` serves `dist/` through the Worker's `ASSETS` binding with
+single-page-application fallback. The Worker also sets COOP/COEP headers on
+every response so threaded WASM works in production.
 
 ## Headers
 
@@ -70,18 +68,8 @@ Cross-Origin-Embedder-Policy: require-corp
 They enable `SharedArrayBuffer`, which TensorFlow.js WASM uses for threaded
 execution.
 
-The Vite dev and preview servers set the headers. The production build ships
-`public/_headers`:
-
-```text
-/*
-  Cross-Origin-Opener-Policy: same-origin
-  Cross-Origin-Embedder-Policy: require-corp
-```
-
-Hosts such as Netlify and Cloudflare Pages can honor that file. GitHub Pages
-does not support custom response headers, so WASM runs single-threaded there.
-The app still works, and WebGPU is unaffected by this limitation.
+The Vite dev and preview servers set the headers, and the Cloudflare Worker
+adds them to production responses.
 
 ## Offline Caching
 
@@ -96,20 +84,18 @@ build date.
 
 ## Static Host Checklist
 
-- Serve `index.html`, `404.html`, model files, WASM files, and generated JS/CSS
-  from the same origin.
+- Serve `index.html`, model files, WASM files, and generated JS/CSS from the
+  same origin.
 - The b18 model is hosted as four ≤24 MiB chunks
   (`katago-b18.bin.gz.001`–`.004`), so hosts with a 25 MiB per-file limit
   (Cloudflare Workers/Pages) can serve it; the client concatenates and
   MD5-checks the chunks before use.
 - Preserve `.gz` model files as files; do not decompress or block them.
-- If the host serves `.gz` with `Content-Encoding: gzip` (Vite dev, GitHub
-  Pages and Netlify commonly do), that is fine: the app normalizes the
+- If the host serves `.gz` with `Content-Encoding: gzip` (Vite dev and common
+  static hosts do), that is fine: the app normalizes the
   response and validates the decompressed MD5 before use.
 - Use the correct Vite base path for subdirectory deployments.
 - Add COOP/COEP headers when the host supports them.
-- Make sure `404.html` is deployed for SPA fallback on hosts that need it.
-
 ## Cloudflare 托管 B18（分片方案，已实现）
 
 Cloudflare Workers 的静态资源（Static Assets）和 Cloudflare Pages 对单个
@@ -122,16 +108,13 @@ Cloudflare Workers 的静态资源（Static Assets）和 Cloudflare Pages 对单
 
 如果不想用分片，其他可行的替代方案（按推荐顺序）：
 
-1. **保持 GitHub Pages（当前部署）**：GitHub Pages 单文件上限 100 MB，
-   单文件 b18 可直接托管；建议配合 Git LFS 存放模型文件，仓库的部署工作流
-   已启用 LFS。
-2. **Cloudflare R2 + 公开桶/自定义域名**：R2 对象存储没有单文件 25 MiB
+1. **Cloudflare R2 + 公开桶/自定义域名**：R2 对象存储没有单文件 25 MiB
    限制；将 `public/models/katago-b18.bin.gz` 上传到 R2，开启公开桶（或
    用 Worker `fetch` 转发），并配置 CORS 允许站点跨域读取。
-3. **其他对象存储 + CDN**：AWS S3 + CloudFront、Backblaze B2、阿里云 OSS、
+2. **其他对象存储 + CDN**：AWS S3 + CloudFront、Backblaze B2、阿里云 OSS、
    腾讯云 COS、七牛/又拍云等，均可托管 94 MB 文件并配 CDN 加速；注意为
    模型文件开启 CORS，否则浏览器端 `fetch` 会失败。
-4. **GitHub Releases 分发**：release asset 上限 2 GB，但 release 下载域名
+3. **GitHub Releases 分发**：release asset 上限 2 GB，但 release 下载域名
    不带 CORS 头，浏览器直连会被拦截，只适合脚本/客户端下载，不适合前端
    直接拉取。
 

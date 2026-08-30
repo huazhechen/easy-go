@@ -4,47 +4,6 @@ type SoundEffectKey = 'stone' | 'capture' | 'pass' | 'new-game';
 const MIN_SOUND_INTERVAL_MS = 50;
 const lastSoundTimeByKey = new Map<SoundEffectKey, number>();
 
-export interface SoundInitError {
-    message: string;
-    backend: 'web-audio';
-    platform: string;
-}
-
-let onSoundInitError: ((error: SoundInitError) => void) | null = null;
-let soundFailureReported = false;
-
-export const setSoundInitErrorHandler = (handler: ((error: SoundInitError) => void) | null): void => {
-    onSoundInitError = handler;
-};
-
-export const resetSoundFailureReport = (): void => {
-    soundFailureReported = false;
-    lastSoundTimeByKey.clear();
-};
-
-const formatSoundError = (error: unknown): string => (
-    error instanceof Error && error.message ? error.message : 'Unknown audio error'
-);
-
-const getPlatformLabel = (): string => {
-    try {
-        return typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown';
-    } catch {
-        return 'unknown';
-    }
-};
-
-const reportSoundError = (message: string): void => {
-    if (soundFailureReported) return;
-    if (!onSoundInitError) return;
-    soundFailureReported = true;
-    onSoundInitError({
-        message,
-        backend: 'web-audio',
-        platform: getPlatformLabel(),
-    });
-};
-
 const getSoundNow = (): number => {
     try {
         return typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -69,8 +28,7 @@ const getAudioContextConstructor = (): typeof AudioContext | null => {
             webkitAudioContext?: typeof AudioContext;
         };
         return audioWindow.AudioContext || audioWindow.webkitAudioContext || null;
-    } catch (error) {
-        reportSoundError(`Browser audio API is blocked: ${formatSoundError(error)}`);
+    } catch {
         return null;
     }
 };
@@ -80,18 +38,14 @@ const getAudioContext = () => {
 
     const AudioContextCtor = getAudioContextConstructor();
     if (!AudioContextCtor) {
-        if (typeof window !== 'undefined') {
-            reportSoundError('Browser audio API is not available.');
-        }
         return null;
     }
 
     try {
         audioCtx = new AudioContextCtor();
         return audioCtx;
-    } catch (error) {
+    } catch {
         audioCtx = null;
-        reportSoundError(`Could not initialize browser audio: ${formatSoundError(error)}`);
         return null;
     }
 };
@@ -99,8 +53,7 @@ const getAudioContext = () => {
 const playWithSoundErrorHandling = (play: (ctx: AudioContext) => void, ctx: AudioContext): void => {
     try {
         play(ctx);
-    } catch (error) {
-        reportSoundError(`Could not play browser audio: ${formatSoundError(error)}`);
+    } catch {
         // Audio is optional; never let a browser audio failure interrupt play.
     }
 };
@@ -111,19 +64,15 @@ const resumeContext = (): { ctx: AudioContext; resumePromise?: Promise<void> } |
     let state: AudioContextState | null = null;
     try {
         state = ctx?.state ?? null;
-    } catch (error) {
-        reportSoundError(`Could not read browser audio state: ${formatSoundError(error)}`);
+    } catch {
         return null;
     }
     if (ctx && state === 'suspended') {
         try {
             const resumePromise = ctx.resume();
-            void resumePromise.catch((error: unknown) => {
-                reportSoundError(`Could not resume browser audio: ${formatSoundError(error)}`);
-            });
+            void resumePromise.catch(() => undefined);
             return { ctx, resumePromise };
-        } catch (error) {
-            reportSoundError(`Could not resume browser audio: ${formatSoundError(error)}`);
+        } catch {
             return null;
         }
     }
@@ -247,6 +196,5 @@ export const playNewGameSound = () => {
 
 export const resetAudioContextForTests = (): void => {
     audioCtx = null;
-    onSoundInitError = null;
-    resetSoundFailureReport();
+    lastSoundTimeByKey.clear();
 };

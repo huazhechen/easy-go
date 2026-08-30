@@ -11,8 +11,8 @@ developer workflow.
   extraction, search, analysis modes, and AI play strategies.
 - [Development](development.md): setup, scripts, project layout, model assets,
   testing, and troubleshooting.
-- [Deployment](deployment.md): static hosting, GitHub Pages, base paths,
-  COOP/COEP headers, service worker caching, and update behavior.
+- [Deployment](deployment.md): Cloudflare Worker hosting, base paths, COOP/COEP
+  headers, and update behavior.
 - [Runtime diagrams](diagram.md): compact diagrams for the main app flow,
   analysis flow, and persistent storage.
 

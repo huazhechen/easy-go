@@ -126,7 +126,7 @@ describe('symmetry duplicate marking', () => {
       koPoint: -1,
       recentMoves: noMoves,
     });
-    const dup = markSymmetryDuplicateMoves(symmetries, true, null);
+    const dup = markSymmetryDuplicateMoves(symmetries, true);
     expect(dup).not.toBeNull();
 
     // Rebuild the symmetry map the same way the engine does, by asking for the
@@ -171,7 +171,7 @@ describe('symmetry duplicate marking', () => {
       koPoint: -1,
       recentMoves: noMoves,
     });
-    const dup = markSymmetryDuplicateMoves(symmetries, true, null)!;
+    const dup = markSymmetryDuplicateMoves(symmetries, true)!;
     // 3-3 point: only the upper right copy survives for black.
     expect(dup[2 * BOARD_SIZE + 6]).toBe(0);
     expect(dup[6 * BOARD_SIZE + 2]).toBe(1);
@@ -179,28 +179,9 @@ describe('symmetry duplicate marking', () => {
     expect(dup[2 * BOARD_SIZE + 2]).toBe(1);
   });
 
-  it('never makes a move outside the region of interest the representative', () => {
-    setBoardSize(9);
-    const symmetries = computeValidRootSymmetries({
-      stones: new Uint8Array(BOARD_AREA),
-      koPoint: -1,
-      recentMoves: noMoves,
-    });
-    // Allow only the lower left quadrant.
-    const roi = new Uint8Array(BOARD_AREA);
-    for (let y = 5; y < 9; y++) for (let x = 0; x < 4; x++) roi[y * BOARD_SIZE + x] = 1;
-    const dup = markSymmetryDuplicateMoves(symmetries, true, roi)!;
-    for (let p = 0; p < BOARD_AREA; p++) {
-      if (roi[p] === 0) continue;
-      // Every allowed point is either kept or a duplicate of another allowed point.
-      if (dup[p] === 0) continue;
-    }
-    expect(dup[6 * BOARD_SIZE + 2]).toBe(0); // the 3-3 in the allowed quadrant is kept now
-  });
-
   it('returns no mask when only the identity is symmetric', () => {
     setBoardSize(9);
-    expect(markSymmetryDuplicateMoves([0], true, null)).toBeNull();
+    expect(markSymmetryDuplicateMoves([0], true)).toBeNull();
   });
 });
 

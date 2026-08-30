@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { boardFromDiagram, hasModel, loadHarnessModel } from './helpers/engineHarness';
 import { MctsSearch, computePlaySelectionValuesForTest } from '../src/engine/katago/analyzeMcts';
-import { BOARD_SIZE, setBoardSize } from '../src/engine/katago/fastBoard';
+import { setBoardSize } from '../src/engine/katago/fastBoard';
 
 // ---------------------------------------------------------------------------
 // Play selection values and LCB.
@@ -236,56 +236,4 @@ describe.skipIf(!hasModel())('analysis output ordering', () => {
       expect(m.lcb).toBeGreaterThanOrEqual(m.winRate);
     }
   }, 120000);
-});
-
-describe.skipIf(!hasModel())('avoiding moves at the root', () => {
-  it('never plays a move the request took off the table', async () => {
-    setBoardSize(9);
-    const model = await loadHarnessModel();
-    const board = boardFromDiagram(MID9);
-
-    const plain = await MctsSearch.create({
-      model,
-      board,
-      currentPlayer: 'black',
-      moveHistory: [],
-      komi: 6.5,
-      rules: 'japanese',
-      nnRandomize: false,
-      conservativePass: true,
-      maxChildren: 24,
-      ownershipMode: 'root',
-      wideRootNoise: 0,
-    });
-    await plain.run({ visits: 60, maxTimeMs: 120000, batchSize: 4 });
-    const top = plain.getAnalysis({ topK: 3, analysisPvLen: 1 }).moves[0]!;
-    expect(top.x).toBeGreaterThanOrEqual(0);
-
-    // Off limits for one ply, which is the root alone.
-    const avoid = new Int32Array(BOARD_SIZE * BOARD_SIZE + 1);
-    avoid[top.y * BOARD_SIZE + top.x] = 1;
-    const restricted = await MctsSearch.create({
-      model,
-      board,
-      currentPlayer: 'black',
-      moveHistory: [],
-      komi: 6.5,
-      rules: 'japanese',
-      nnRandomize: false,
-      conservativePass: true,
-      maxChildren: 24,
-      ownershipMode: 'root',
-      wideRootNoise: 0,
-      avoidMoveUntilBlack: avoid,
-    });
-    await restricted.run({ visits: 60, maxTimeMs: 120000, batchSize: 4 });
-    const analysis = restricted.getAnalysis({ topK: 20, analysisPvLen: 1 });
-
-    expect(analysis.moves.length).toBeGreaterThan(0);
-    for (const move of analysis.moves) {
-      expect(`${move.x},${move.y}`).not.toBe(`${top.x},${top.y}`);
-    }
-    // The policy overlay still shows the whole board; only the search is restricted.
-    expect(analysis.policy[top.y * BOARD_SIZE + top.x]!).toBeGreaterThan(0);
-  }, 300000);
 });

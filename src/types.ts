@@ -69,10 +69,8 @@ export interface AnalysisResult {
   territory: number[][]; // boardSize x boardSize grid, values -1 (white) to 1 (black)
   policy?: FloatArray; // len boardSize*boardSize + 1, illegal = -1, pass at last index
   ownershipStdev?: FloatArray; // len boardSize*boardSize
-  ownershipMode?: 'none' | 'root' | 'tree';
+  ownershipMode?: 'root' | 'tree';
 }
-
-export type RegionOfInterest = { xMin: number; xMax: number; yMin: number; yMax: number };
 
 export interface GameNode {
   id: string;

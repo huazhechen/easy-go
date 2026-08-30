@@ -157,12 +157,6 @@ about a filled board, which is off-distribution and unreliable. Territory rules
 need the dead stones agreed first — what KataGo's encore is for — so under those
 the network keeps judging the position as before.
 
-### Restricting the search
-
-`avoidMoves` (KataGo's own name for it) removes moves from the root's options
-without touching the policy the overlay draws. A region of interest restricts
-the root the same way, and the two compose.
-
 ## Analysis Modes
 
 The store uses the engine in several ways:

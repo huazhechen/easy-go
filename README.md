@@ -5,8 +5,6 @@ Easy Go is a browser-based Go study app inspired by
 network evaluation locally in the browser with TensorFlow.js, keeps the search
 work off the main thread in a Web Worker, and needs no analysis server.
 
-**Live app:** https://huazhechen.github.io/easy-go/
-
 ## Highlights
 
 - Play against browser KataGo, which always plays the strongest move it finds,
@@ -77,9 +75,8 @@ Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-Vite dev and preview send these headers. The production build includes
-`public/_headers` for hosts that honor it. GitHub Pages still works without
-custom headers, but WASM runs single-threaded there; WebGPU is unaffected.
+Vite dev and preview send these headers. The Cloudflare Worker deployment sets
+them on every response, so threaded WASM is available in production too.
 
 ## Documentation
 

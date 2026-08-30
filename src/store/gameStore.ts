@@ -72,8 +72,6 @@ interface GameStore extends GameState {
     reportEveryMs?: number;
     /** Let an outer scheduler handle failures instead of resolving after reporting them. */
     propagateErrors?: boolean;
-    /** Moves the search may not play at the root (KataGo avoidMoves). */
-    avoidMoves?: Array<{ x: number; y: number }>;
   }) => Promise<void>;
   updateSettings: (newSettings: Partial<GameSettings>) => void;
   startNewGame: (opts: { komi: number; rules: GameRules; boardSize: BoardSize; handicap: number }) => void;
@@ -532,8 +530,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       // Check if current node already has analysis
       const desiredVisits = Math.max(16, Math.min(opts?.visits ?? state.settings.katagoVisits, ENGINE_MAX_VISITS));
-      const avoidMoves = opts?.avoidMoves && opts.avoidMoves.length > 0 ? opts.avoidMoves : undefined;
-      if (!opts?.force && !avoidMoves && state.currentNode.analysis) {
+      if (!opts?.force && state.currentNode.analysis) {
         const existing = state.currentNode.analysis;
         const existingOwnershipMode = existing.ownershipMode ?? 'root';
         const requiredOwnershipMode = state.settings.katagoOwnershipMode;
@@ -677,7 +674,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
         maxChildren,
         reuseTree,
         ownershipRefreshIntervalMs,
-        avoidMoves ? avoidMoves.map((m) => `${m.x},${m.y}`).sort().join(' ') : ''
       );
       // "Loading" is about the model, not about a request being in flight.
       // Flagging it on every live-analysis pass left the pill reading
@@ -728,7 +724,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
             fillDameBeforePass,
             nnRandomize,
             conservativePass,
-            avoidMoves: avoidMoves?.map((m) => ({ x: m.x, y: m.y, player: state.currentPlayer })),
           visits,
           maxTimeMs,
           batchSize,

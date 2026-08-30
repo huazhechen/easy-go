@@ -8,9 +8,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { createVersionMetadata } from './src/utils/versionMetadata';
 
 // https://vite.dev/config/
-const repoName = process.env.GITHUB_REPOSITORY?.split('/')[1];
-const inferredBase = repoName && !repoName.endsWith('.github.io') ? `/${repoName}/` : '/';
-const rawBase = process.env.VITE_BASE_URL ?? process.env.BASE_URL ?? inferredBase;
+const rawBase = process.env.VITE_BASE_URL ?? process.env.BASE_URL ?? '/';
 const normalizedBase = rawBase.startsWith('/') ? rawBase : `/${rawBase}`;
 const base = normalizedBase.endsWith('/') ? normalizedBase : `${normalizedBase}/`;
 const packageJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8')) as { version?: string };
@@ -75,7 +73,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
-        notFound: path.resolve(__dirname, '404.html'),
       },
       output: {
         manualChunks(id) {

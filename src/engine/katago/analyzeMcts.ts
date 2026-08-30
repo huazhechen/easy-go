@@ -1,5 +1,5 @@
 import * as tf from '@tensorflow/tfjs';
-import type { BoardState, FloatArray, GameRules, Move, Player, RegionOfInterest } from '../../types';
+import type { BoardState, FloatArray, GameRules, Move, Player } from '../../types';
 import { getAnimationNow } from '../../utils/animationFrame';
 import { postprocessKataGoV8 } from './evalV8';
 import type { KataGoModelV8Tf } from './modelV8';
@@ -48,7 +48,7 @@ import {
 import { fillInputsV7Fast, type RecentMove } from './featuresV7Fast';
 import { POLICY_OPTIMISM, ROOT_POLICY_OPTIMISM } from './searchParams';
 
-export type OwnershipMode = 'none' | 'root' | 'tree';
+export type OwnershipMode = 'root' | 'tree';
 
 type PolicyValueOutput = ReturnType<KataGoModelV8Tf['forwardPolicyValue']>;
 type PolicyValueOwnershipOutput = ReturnType<KataGoModelV8Tf['forward']>;
@@ -230,31 +230,6 @@ function takeRecentMoves(
   return out;
 }
 
-function normalizeRegionOfInterest(roi?: RegionOfInterest | null): RegionOfInterest | null {
-  if (!roi) return null;
-  const xMin = Math.max(0, Math.min(BOARD_SIZE - 1, Math.min(roi.xMin, roi.xMax)));
-  const xMax = Math.max(0, Math.min(BOARD_SIZE - 1, Math.max(roi.xMin, roi.xMax)));
-  const yMin = Math.max(0, Math.min(BOARD_SIZE - 1, Math.min(roi.yMin, roi.yMax)));
-  const yMax = Math.max(0, Math.min(BOARD_SIZE - 1, Math.max(roi.yMin, roi.yMax)));
-  const isSinglePoint = xMin === xMax && yMin === yMax;
-  const isWholeBoard = xMin === 0 && yMin === 0 && xMax === BOARD_SIZE - 1 && yMax === BOARD_SIZE - 1;
-  if (isSinglePoint || isWholeBoard) return null;
-  return { xMin, xMax, yMin, yMax };
-}
-
-function buildAllowedMovesMask(roi?: RegionOfInterest | null): Uint8Array | null {
-  const normalized = normalizeRegionOfInterest(roi);
-  if (!normalized) return null;
-  const allowed = new Uint8Array(BOARD_AREA);
-  for (let y = normalized.yMin; y <= normalized.yMax; y++) {
-    const rowOff = y * BOARD_SIZE;
-    for (let x = normalized.xMin; x <= normalized.xMax; x++) {
-      allowed[rowOff + x] = 1;
-    }
-  }
-  return allowed;
-}
-
 /** Last n entries of a move list, oldest first. */
 /** How many passes the game currently ends with, KataGo's consecutiveEndingPasses. */
 function countConsecutiveEndingPasses(moves: RecentMove[]): number {
@@ -336,8 +311,7 @@ export function computeValidRootSymmetries(args: {
  */
 export function markSymmetryDuplicateMoves(
   validSymmetries: number[],
-  nextPlayerIsBlack: boolean,
-  roiMask: Uint8Array | null
+  nextPlayerIsBlack: boolean
 ): Uint8Array | null {
   if (validSymmetries.length <= 1) return null;
   const map = getSymPosMap();
@@ -345,9 +319,6 @@ export function markSymmetryDuplicateMoves(
   const n = BOARD_SIZE;
 
   const markFrom = (loc: number) => {
-    // A move the search may not play never becomes the representative, so a copy
-    // inside the region survives instead (KataGo passes avoidMoveUntilByLoc here).
-    if (roiMask && roiMask[loc] === 0) return;
     if (dup[loc] === 1) return;
     for (const sym of validSymmetries) {
       if (sym === 0) continue;
@@ -374,7 +345,6 @@ export function markSymmetryDuplicateMoves(
  * away so the analysis output can put the copies back.
  */
 function buildRootMoveMask(args: {
-  regionOfInterest?: RegionOfInterest | null;
   stones: Uint8Array;
   koPoint: number;
   moveHistory: RecentMove[];
@@ -382,23 +352,8 @@ function buildRootMoveMask(args: {
   symmetryPruning?: boolean;
   /** KataGo ignorePreRootHistory: with it on, symmetry is a matter of stones alone. */
   ignorePreRootHistory?: boolean;
-  /**
-   * KataGo avoidMoveUntilByLoc for the player to move: the ply before which each
-   * move is off limits. Index BOARD_AREA is the pass. Zero means no restriction.
-   */
-  avoidMoveUntil?: Int32Array | null;
-}): { allowedMoves: Uint8Array | null; roiMask: Uint8Array | null; rootSymmetries: number[] } {
-  const roiMask = buildAllowedMovesMask(args.regionOfInterest);
-  let allowedMoves = roiMask;
-
-  if (args.avoidMoveUntil) {
-    // The root is ply zero, so anything with a positive untilDepth is banned here.
-    const avoided = allowedMoves ? new Uint8Array(allowedMoves) : new Uint8Array(BOARD_AREA).fill(1);
-    for (let p = 0; p < BOARD_AREA; p++) {
-      if (args.avoidMoveUntil[p]! > 0) avoided[p] = 0;
-    }
-    allowedMoves = avoided;
-  }
+}): { allowedMoves: Uint8Array | null; rootSymmetries: number[] } {
+  let allowedMoves: Uint8Array | null = null;
 
   // KataGo rootPruneUselessMoves: once the opponent has passed four times running,
   // stop considering moves inside either side's pass-alive area. Those only prolong
@@ -413,7 +368,7 @@ function buildRootMoveMask(args: {
     allowedMoves = pruned;
   }
 
-  if (args.symmetryPruning === false) return { allowedMoves, roiMask, rootSymmetries: [0] };
+  if (args.symmetryPruning === false) return { allowedMoves, rootSymmetries: [0] };
 
   const rootSymmetries = computeValidRootSymmetries({
     stones: args.stones,
@@ -421,8 +376,8 @@ function buildRootMoveMask(args: {
     recentMoves: takeLastMoves(args.moveHistory, 5),
     ignorePreRootHistory: args.ignorePreRootHistory,
   });
-  const symDupMoves = markSymmetryDuplicateMoves(rootSymmetries, args.currentPlayer === 'black', allowedMoves);
-  if (!symDupMoves) return { allowedMoves, roiMask, rootSymmetries };
+  const symDupMoves = markSymmetryDuplicateMoves(rootSymmetries, args.currentPlayer === 'black');
+  if (!symDupMoves) return { allowedMoves, rootSymmetries };
 
   // Searching one copy of each symmetric move spends every visit on a distinct
   // position; the copies go back into the analysis output afterwards.
@@ -430,7 +385,7 @@ function buildRootMoveMask(args: {
   for (let p = 0; p < BOARD_AREA; p++) {
     if (symDupMoves[p] === 1) allowed[p] = 0;
   }
-  return { allowedMoves: allowed, roiMask, rootSymmetries };
+  return { allowedMoves: allowed, rootSymmetries };
 }
 
 function expandNode(args: {
@@ -614,7 +569,6 @@ function expandNode(args: {
 
 async function buildRootEval(args: {
   model: KataGoModelV8Tf;
-  ownershipMode: OwnershipMode;
   rules: GameRules;
   rootSymmetrySamples?: number;
   komi: number;
@@ -628,9 +582,7 @@ async function buildRootEval(args: {
   rootPrevPrevKoPoint: number;
   rootMoves: RecentMove[];
   maxChildren: number;
-  regionOfInterest?: RegionOfInterest | null;
   rootSymmetryPruning?: boolean;
-  avoidRootMoves?: Int32Array | null;
   outputScaleMultiplier: number;
   /** KataGo ignorePreRootHistory: the root's history planes stay empty. */
   ignorePreRootHistory: boolean;
@@ -644,7 +596,6 @@ async function buildRootEval(args: {
   preserveExistingChildren?: boolean;
 }): Promise<{
   rootSymmetries: number[];
-  roiMask: Uint8Array | null;
   rootNnWeight: number;
   rootLibertyMap: Uint8Array;
   rootOwnership: Float32Array;
@@ -665,10 +616,9 @@ async function buildRootEval(args: {
   rawStScoreError: number;
   rawVarTimeLeft: number;
 }> {
-  const includeOwnership = args.ownershipMode !== 'none';
   const rootEval = await evaluateRootEval({
     model: args.model,
-    includeOwnership,
+    includeOwnership: true,
     rules: args.rules,
     rootSymmetrySamples: args.rootSymmetrySamples,
     policyOptimism: ROOT_POLICY_OPTIMISM,
@@ -692,27 +642,23 @@ async function buildRootEval(args: {
 
   const rootLibertyMap = new Uint8Array(rootEval.libertyMap);
   const rootOwnership = new Float32Array(BOARD_AREA);
-  if (includeOwnership) {
-    if (!rootEval.ownership) throw new Error('Missing ownership output');
-    const rootOwnershipSign = args.currentPlayer === 'black' ? 1 : -1;
-    const rootSym = rootEval.symmetry;
-    const rootSymOff = rootSym * BOARD_AREA;
-    const symPosMap = rootSym === 0 ? null : getSymPosMap();
-    for (let i = 0; i < BOARD_AREA; i++) {
-      const symPos = rootSym === 0 ? i : symPosMap![rootSymOff + i]!;
-      rootOwnership[i] = rootOwnershipSign * activatedOwnership(rootEval, symPos, args.outputScaleMultiplier);
-    }
+  if (!rootEval.ownership) throw new Error('Missing ownership output');
+  const rootOwnershipSign = args.currentPlayer === 'black' ? 1 : -1;
+  const rootSym = rootEval.symmetry;
+  const rootSymOff = rootSym * BOARD_AREA;
+  const symPosMap = rootSym === 0 ? null : getSymPosMap();
+  for (let i = 0; i < BOARD_AREA; i++) {
+    const symPos = rootSym === 0 ? i : symPosMap![rootSymOff + i]!;
+    rootOwnership[i] = rootOwnershipSign * activatedOwnership(rootEval, symPos, args.outputScaleMultiplier);
   }
 
-  const { allowedMoves: rootAllowedMoves, roiMask, rootSymmetries } = buildRootMoveMask({
-    regionOfInterest: args.regionOfInterest,
+  const { allowedMoves: rootAllowedMoves, rootSymmetries } = buildRootMoveMask({
     stones: args.rootStones,
     koPoint: args.rootKoPoint,
     moveHistory: args.rootMoves,
     currentPlayer: args.currentPlayer,
     symmetryPruning: args.rootSymmetryPruning,
     ignorePreRootHistory: args.ignorePreRootHistory,
-    avoidMoveUntil: args.avoidRootMoves,
   });
   const rootPolicy = new Float32Array(BOARD_AREA + 1);
   const policyNode = args.node ?? new Node(playerToColor(args.currentPlayer));
@@ -760,7 +706,6 @@ async function buildRootEval(args: {
 
   return {
     rootSymmetries,
-    roiMask,
     rootNnWeight: computeWeightFromEval({
       blackScoreMean: rootEval.blackScoreMean,
       shorttermWinlossError: rootEval.shorttermWinlossError ?? -1,
@@ -1733,9 +1678,6 @@ function selectEdge(
   rand: Rand,
   endingBonus: Float64Array | null = null,
   recentScoreCenter = 0,
-  /** Plies from the root, for KataGo's avoidMoveUntilByLoc. */
-  depth = 0,
-  avoidMoveUntil: Int32Array | null = null,
   out: EdgeSelection = edgeSelectionScratch
 ): EdgeSelection {
   const edges = node.edges;
@@ -1769,8 +1711,6 @@ function selectEdge(
 
   for (const e of edges) {
     const child = e.child;
-    // KataGo avoidMoveUntilByLoc: off limits until this many plies from the root.
-    if (avoidMoveUntil && avoidMoveUntil[e.move]! > depth) continue;
     let prior = e.prior;
     // KataGo treats a negative policy entry as an illegal move and skips it.
     if (prior < 0) continue;
@@ -2454,7 +2394,6 @@ function buildAnalysisMoves(args: {
   includeMovesOwnership: boolean;
   cloneBuffers: boolean;
   rootSymmetries?: number[];
-  roiMask?: Uint8Array | null;
 }): AnalysisPayloadMove[] {
   const { rows, rootWinRate, rootScoreLead } = args;
   const topRows = rows.length > args.topK ? rows.slice(0, args.topK) : rows;
@@ -2525,7 +2464,6 @@ function buildAnalysisMoves(args: {
   // KataGo's duplicateForSymmetries: the search only looked at one copy of each
   // symmetric move, so put the copies back with their variations mapped over.
   const map = getSymPosMap();
-  const roiMask = args.roiMask ?? null;
   const seen = new Set<number>();
   const out: AnalysisPayloadMove[] = [];
   for (const row of built) {
@@ -2533,7 +2471,6 @@ function buildAnalysisMoves(args: {
     for (const sym of symmetries) {
       const symMove = move === PASS_MOVE ? PASS_MOVE : map[sym * BOARD_AREA + move]!;
       if (seen.has(symMove)) continue;
-      if (roiMask && symMove !== PASS_MOVE && roiMask[symMove] === 0) continue;
       seen.add(symMove);
       const symPv = sym === 0 ? pvMoves : pvMoves.map((mv) => (mv === PASS_MOVE ? mv : map[sym * BOARD_AREA + mv]!));
       out.push({
@@ -3214,7 +3151,6 @@ export class MctsSearch {
   private libertySeedsScratch = new Int16Array(BOARD_AREA * 5);
   private treeOwnershipCache: { visits: number; ownership: Float32Array; ownershipStdev: Float32Array; timestamp: number } | null = null;
   private rootSymmetries: number[];
-  private roiMask: Uint8Array | null;
   private rootEndingBonus: Float64Array | null;
   /**
    * KataGo ignorePreRootHistory, which its analysis engine turns on by default: the
@@ -3235,12 +3171,6 @@ export class MctsSearch {
   private readonly useGraphSearch: boolean = USE_GRAPH_SEARCH;
   /** KataGo rootPolicyTemperature and rootPolicyTemperatureEarly, before interpolation. */
   private readonly fillDameBeforePass: boolean;
-  /**
-   * KataGo avoidMoveUntilByLocBlack / White: the ply before which each move is off
-   * limits for that player, indexed by move with BOARD_AREA for the pass.
-   */
-  private readonly avoidMoveUntilBlack: Int32Array | null;
-  private readonly avoidMoveUntilWhite: Int32Array | null;
   private readonly rootPolicyTemperature: number;
   private readonly rootPolicyTemperatureEarly: number;
   private readonly transpositionTable = new Map<number, Node>();
@@ -3295,15 +3225,12 @@ export class MctsSearch {
     rand: Rand;
     outputScaleMultiplier: number;
     rootSymmetries: number[];
-    roiMask: Uint8Array | null;
     rootSymmetryPruning: boolean;
     rootEndingBonus: Float64Array | null;
     ignorePreRootHistory: boolean;
     enablePassingHacks: boolean;
     useGraphSearch: boolean;
     fillDameBeforePass: boolean;
-    avoidMoveUntilBlack: Int32Array | null;
-    avoidMoveUntilWhite: Int32Array | null;
     rootRaw: {
       winRate: number;
       scoreLead: number;
@@ -3343,15 +3270,12 @@ export class MctsSearch {
     this.rand = args.rand;
     this.outputScaleMultiplier = args.outputScaleMultiplier;
     this.rootSymmetries = args.rootSymmetries;
-    this.roiMask = args.roiMask;
     this.rootSymmetryPruning = args.rootSymmetryPruning;
     this.rootEndingBonus = args.rootEndingBonus;
     this.ignorePreRootHistory = args.ignorePreRootHistory;
     this.enablePassingHacks = args.enablePassingHacks;
     this.useGraphSearch = args.useGraphSearch;
     this.fillDameBeforePass = args.fillDameBeforePass;
-    this.avoidMoveUntilBlack = args.avoidMoveUntilBlack;
-    this.avoidMoveUntilWhite = args.avoidMoveUntilWhite;
     this.rootRaw = args.rootRaw;
     this.rootPolicyTemperature = args.rootPolicyTemperature;
     this.rootPolicyTemperatureEarly = args.rootPolicyTemperatureEarly;
@@ -3391,7 +3315,7 @@ export class MctsSearch {
   private shouldSuppressPass(): boolean {
     if (!this.fillDameBeforePass) return false;
     if (this.rules !== 'japanese' && this.rules !== 'korean') return false;
-    const ownership = this.ownershipMode === 'none' ? null : this.rootOwnership;
+    const ownership = this.rootOwnership;
     if (!ownership) return false;
     const edges = this.rootNode.edges;
     if (!edges) return false;
@@ -3480,7 +3404,6 @@ export class MctsSearch {
     ownershipMode: OwnershipMode;
     wideRootNoise: number;
     rootSymmetrySamples?: number;
-    regionOfInterest?: RegionOfInterest | null;
     rootSymmetryPruning?: boolean;
     /**
      * KataGo ignorePreRootHistory. Defaults to true, as it does for KataGo's
@@ -3505,12 +3428,6 @@ export class MctsSearch {
      * with. Defaults to 0. Only useful for reproducing a recorded run.
      */
     rootSymmetry?: number;
-    /**
-     * KataGo avoidMoveUntilByLoc, one array per player: the ply before which each
-     * move is off limits. Index BOARD_AREA is the pass; zero means no restriction.
-     */
-    avoidMoveUntilBlack?: Int32Array | null;
-    avoidMoveUntilWhite?: Int32Array | null;
   }): Promise<MctsSearch> {
     const outputScaleMultiplier = args.model.postProcessParams?.outputScaleMultiplier ?? 1.0;
     const rootSymmetrySamples = clampRootSymmetrySamples(args.rootSymmetrySamples);
@@ -3553,7 +3470,6 @@ export class MctsSearch {
     const rootNode = new Node(playerToColor(args.currentPlayer));
     const {
       rootSymmetries,
-      roiMask,
       rootNnWeight,
       rootLibertyMap,
       rootOwnership,
@@ -3574,7 +3490,6 @@ export class MctsSearch {
       rawVarTimeLeft,
     } = await buildRootEval({
       model: args.model,
-      ownershipMode: args.ownershipMode,
       rules: args.rules,
       rootSymmetrySamples,
       komi: args.komi,
@@ -3588,10 +3503,7 @@ export class MctsSearch {
       rootPrevPrevKoPoint,
       rootMoves,
       maxChildren: args.maxChildren,
-      regionOfInterest: args.regionOfInterest,
       rootSymmetryPruning: args.rootSymmetryPruning,
-      avoidRootMoves:
-        args.currentPlayer === 'black' ? (args.avoidMoveUntilBlack ?? null) : (args.avoidMoveUntilWhite ?? null),
       outputScaleMultiplier,
       ignorePreRootHistory,
       enablePassingHacks,
@@ -3617,7 +3529,7 @@ export class MctsSearch {
       stones: rootStones,
       libertyMap: rootLibertyMap,
       koPoint: rootKoPoint,
-      ownership: args.ownershipMode === 'none' ? null : rootOwnership,
+      ownership: rootOwnership,
       currentPlayer: args.currentPlayer,
       rules: args.rules,
     });
@@ -3647,15 +3559,12 @@ export class MctsSearch {
       rand: new Rand(),
       outputScaleMultiplier,
       rootSymmetries,
-      roiMask,
       rootSymmetryPruning: args.rootSymmetryPruning !== false,
       rootEndingBonus,
       ignorePreRootHistory,
       enablePassingHacks,
       useGraphSearch,
       fillDameBeforePass,
-      avoidMoveUntilBlack: args.avoidMoveUntilBlack ?? null,
-      avoidMoveUntilWhite: args.avoidMoveUntilWhite ?? null,
       rootRaw: {
         winRate: rawWinRate,
         scoreLead: rawScoreLead,
@@ -3680,7 +3589,6 @@ export class MctsSearch {
     moveHistory: Move[];
     komi: number;
     rules: GameRules;
-    regionOfInterest?: RegionOfInterest | null;
   }): Promise<boolean> {
     const edges = this.rootNode.edges;
     if (!edges || edges.length === 0) return false;
@@ -3708,7 +3616,6 @@ export class MctsSearch {
     const shouldExpandRoot = !child.edges || child.edges.length === 0;
     const {
       rootSymmetries,
-      roiMask,
       rootNnWeight,
       rootLibertyMap,
       rootOwnership,
@@ -3729,7 +3636,6 @@ export class MctsSearch {
       rawVarTimeLeft,
     } = await buildRootEval({
       model: this.model,
-      ownershipMode: this.ownershipMode,
       rules: args.rules,
       rootSymmetryPruning: this.rootSymmetryPruning,
       rootSymmetrySamples: this.rootSymmetrySamples,
@@ -3744,7 +3650,6 @@ export class MctsSearch {
       rootPrevPrevKoPoint,
       rootMoves,
       maxChildren: this.maxChildren,
-      regionOfInterest: args.regionOfInterest,
       outputScaleMultiplier: this.outputScaleMultiplier,
       ignorePreRootHistory: this.ignorePreRootHistory,
       enablePassingHacks: this.enablePassingHacks,
@@ -3782,7 +3687,6 @@ export class MctsSearch {
     this.recentScoreCenter = recentScoreCenter;
     this.currentPlayer = args.currentPlayer;
     this.rootSymmetries = rootSymmetries;
-    this.roiMask = roiMask;
     this.rootRaw = {
       winRate: rawWinRate,
       scoreLead: rawScoreLead,
@@ -3801,7 +3705,7 @@ export class MctsSearch {
       stones: rootStones,
       libertyMap: rootLibertyMap,
       koPoint: rootKoPoint,
-      ownership: this.ownershipMode === 'none' ? null : rootOwnership,
+      ownership: rootOwnership,
       currentPlayer: args.currentPlayer,
       rules: args.rules,
     });
@@ -3926,8 +3830,6 @@ export class MctsSearch {
             this.rand,
             this.rootEndingBonus,
             this.recentScoreCenter,
-            depth,
-            player === BLACK ? this.avoidMoveUntilBlack : this.avoidMoveUntilWhite
           );
           if (!selection.edge) break;
           let e = selection.edge;
@@ -3938,12 +3840,7 @@ export class MctsSearch {
           // that look cost the node any weight.
           if (
             ENABLE_MORE_PASSING_HACKS &&
-            weightlessFrom < 0 &&
-            // KataGo will not force a playout while any move is being avoided, in
-            // case the move it would force is one of them.
-            this.avoidMoveUntilBlack === null &&
-            this.avoidMoveUntilWhite === null &&
-            (node !== this.rootNode || this.roiMask === null)
+            weightlessFrom < 0
           ) {
             const lastMove =
               pathMoves.length > 0
@@ -4401,7 +4298,6 @@ export class MctsSearch {
       includeMovesOwnership,
       cloneBuffers,
       rootSymmetries: this.rootSymmetries,
-      roiMask: this.roiMask,
     });
 
     let ownership: Float32Array;
