@@ -289,8 +289,3 @@ export async function resolveTierModelUrl(tierId: string): Promise<string | null
   const cached = await readValidatedCachedModel(modelCacheKeyForTier(tier.id), tier.md5);
   return cached ? objectUrlForModelBytes(cached) : null;
 }
-
-export async function hasCachedTierModel(tierId: string): Promise<boolean> {
-  const tier = getModelTier(tierId);
-  return (await readValidatedCachedModel(modelCacheKeyForTier(tierId), tier?.md5)) !== null;
-}

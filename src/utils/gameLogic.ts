@@ -173,16 +173,3 @@ export const isEye = (board: BoardState, x: number, y: number, player: Player): 
 
     return true;
 };
-
-export const getLegalMoves = (board: BoardState, player: Player, previousBoard?: BoardState): {x: number, y: number}[] => {
-    const moves: {x: number, y: number}[] = [];
-    const size = board.length;
-    for(let y=0; y<size; y++) {
-        for(let x=0; x<size; x++) {
-            if (isValidMove(board, x, y, player, previousBoard)) {
-                moves.push({x, y});
-            }
-        }
-    }
-    return moves;
-};

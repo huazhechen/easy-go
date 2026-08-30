@@ -18,7 +18,6 @@ binary and does not require a backend server.
 | `src/engine/katago/evalV8.ts` | Post-processing of network value and score outputs. |
 | `src/engine/katago/positionInputsV7.ts` | Board position to v7 input planes, including ko, ladder, and area features. |
 | `src/engine/katago/backendFallback.ts` | TensorFlow.js backend preference and fallback helpers. |
-| `src/engine/katago/humanSlProfile.ts` | Metadata rows for KataGo's human SL net (rank, era, time control). |
 
 ## Model Loading
 
@@ -26,14 +25,15 @@ The app ships three locally-hosted model tiers under `public/models/`:
 
 | Tier | File | Size | 思考时间滑块 |
 | --- | --- | --- | --- |
-| B6 | `models/katago-small.bin.gz` | ~6M | 1–15 秒 |
-| B10 (default) | `models/katago-b10.bin.gz` | ~10M | 2–30 秒 |
-| B18 | `models/katago-b18.bin.gz` | ~96M | 5–60 秒 |
+| B6 | `models/katago-small.bin.gz` | ~6M | 1–10 秒 |
+| B10 (default) | `models/katago-b10.bin.gz` | ~10M | 1–20 秒 |
+| B18 | `models/katago-b18.bin.gz` | ~96M | 1–60 秒 |
 
 每个档位有自己独立的思考时间滑块范围（整数秒），切换模型时思考时间会
 重置为该档位默认中间值（B6 5 秒 / B10 10 秒 / B18 30 秒）；滑块直接贴在
-模型三个按钮下方，颜色跟随当前木色主题。模型按钮显示为“档位 + 当前思考
-秒数”（如 B6 13s），拖动滑块会实时刷新对应按钮文字，不再显示 M 数。
+模型三个按钮下方，颜色跟随当前木色主题。模型按钮默认只显示档位名，只有
+选中档位才额外显示当前思考秒数（如 B10 10s），拖动滑块会实时刷新选中按钮
+上的秒数，不再显示 M 数。
 新对局开始时使用当前档位所选时间作为 AI 每步思考上限。下载进度条使用
 真实字节大小（压缩/解压后按实际收到的字节显示），不再写死 96M。
 推荐落点/持续分析刻意使用写死的超大预算（5000 访问 / 60 秒），不随档位
@@ -149,24 +149,6 @@ ported pieces, with the C++ they mirror:
   model version 10 on predict this; older ones, including the bundled small
   network, weight every visit equally.
 
-## Human-like Moves
-
-KataGo 1.15 added a second network trained on human games, which predicts the
-move a player of a given rank would make rather than the best move. Settings can
-point at it (`b18c384nbt-humanv0.bin.gz`); the analysis itself always comes from
-the main network, and the human network only adds a `humanPolicy` to the payload,
-which the policy overlay can draw instead of the engine's own policy.
-
-Profiles follow KataGo's `humanSLProfile` names: `rank_20k` through `rank_9d`,
-`preaz_*` for pre-AlphaGo style, and `proyear_1800` through `proyear_2023`. The
-official download does not send CORS headers, so Settings also accepts a local
-path under `public/models/` or a file loaded from disk for the session.
-
-The report and the move info panel use the same numbers the other way round: how
-often a player of the configured rank plays the move that was actually played, so
-a review can say whether a move was a normal choice at that level or an unusual
-one, rather than only how many points it cost.
-
 ### Finished games
 
 Two passes end the game. Under area scoring the result is then a matter of
@@ -178,10 +160,8 @@ the network keeps judging the position as before.
 ### Restricting the search
 
 `avoidMoves` (KataGo's own name for it) removes moves from the root's options
-without touching the policy the overlay draws. The command palette's "Analyze
-without the top move" uses it to answer what the rest of the board is worth when
-one move dominates the reading. A region of interest restricts the root the same
-way, and the two compose.
+without touching the policy the overlay draws. A region of interest restricts
+the root the same way, and the two compose.
 
 ## Analysis Modes
 
@@ -189,9 +169,6 @@ The store uses the engine in several ways:
 
 - Interactive analysis: current-position search for the board UI.
 - Continuous analysis: automatically refreshes as the current node changes.
-- Quick game analysis: value-only batch evaluation for a fast whole-line scan.
-- Fast game analysis: low-visit MCTS over the current line.
-- Full game analysis: requested-visit MCTS over selected nodes or mistakes.
 - AI move selection: runs analysis and plays the search's top-ranked move.
 - Self-play to end: repeats AI move selection until the game is complete.
 

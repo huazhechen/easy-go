@@ -1,7 +1,5 @@
 import type { BoardSize, BoardState } from '../types';
 
-export const BOARD_SIZES: BoardSize[] = [5, 7, 9, 11, 13, 15, 17, 19];
-
 export const isBoardSize = (value: number): value is BoardSize =>
   value === 5 || value === 7 || value === 9 || value === 11 || value === 13 || value === 15 || value === 17 || value === 19;
 

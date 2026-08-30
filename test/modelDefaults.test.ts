@@ -33,10 +33,10 @@ describe('KataGo model tier catalog', () => {
   it('gives each tier its own independent thinking time slider range', () => {
     const [b6, b10, b18] = KATAGO_MODEL_TIERS;
     expect(b6!.minThinkingMs).toBe(1000);
-    expect(b6!.maxThinkingMs).toBe(15000);
-    expect(b10!.minThinkingMs).toBe(2000);
-    expect(b10!.maxThinkingMs).toBe(30000);
-    expect(b18!.minThinkingMs).toBe(5000);
+    expect(b6!.maxThinkingMs).toBe(10000);
+    expect(b10!.minThinkingMs).toBe(1000);
+    expect(b10!.maxThinkingMs).toBe(20000);
+    expect(b18!.minThinkingMs).toBe(1000);
     expect(b18!.maxThinkingMs).toBe(60000);
     for (const tier of KATAGO_MODEL_TIERS) {
       expect(tier.minThinkingMs).toBeLessThan(tier.maxThinkingMs);
@@ -46,7 +46,7 @@ describe('KataGo model tier catalog', () => {
       expect(tier.maxThinkingMs % 1000).toBe(0);
       expect(tier.thinkingStepMs).toBe(1000);
     }
-    // Defaults are the middle of each range: B6 5s / B10 10s / B18 30s.
+    // Defaults sit at the middle of each range: B6 5s / B10 10s / B18 30s.
     expect(b6!.defaultThinkingMs).toBe(5000);
     expect(b10!.defaultThinkingMs).toBe(10000);
     expect(b18!.defaultThinkingMs).toBe(30000);

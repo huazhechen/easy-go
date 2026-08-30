@@ -50,15 +50,6 @@ export interface KataGoAnalyzeRequest {
   ownershipRefreshIntervalMs?: number;
   reuseTree?: boolean;
   ownershipMode?: 'none' | 'root' | 'tree';
-  /** KataGo human SL net, used only to report how a human of a given rank would play. */
-  humanModelUrl?: string;
-  humanSlProfile?: string;
-  /**
-   * KataGo humanSLRootExploreProbWeightless: how often a playout leaves the root by
-   * the human policy without the root being charged for it. 0 (KataGo's default)
-   * leaves the search alone; its human-bot config uses 0.8.
-   */
-  humanSlRootExploreProb?: number;
   /**
    * KataGo avoidMoves: moves the search may not play until `untilDepth` plies from
    * the root. `untilDepth` defaults to 1, which bans the move at the root alone.
@@ -87,8 +78,6 @@ export interface KataGoAnalysisPayload {
   ownership: FloatArray; // len 361, +1 black owns, -1 white owns
   ownershipStdev: FloatArray; // len 361
   policy: FloatArray; // len 362, illegal = -1, pass at index 361
-  // Same shape as `policy`, from the human SL net for the requested profile.
-  humanPolicy?: FloatArray;
   moves: Array<{
     x: number;
     y: number;
@@ -113,7 +102,6 @@ export interface KataGoAnalysisPayload {
     utilityLcb?: number; // utility-scale lower confidence bound, black perspective
     playSelectionValue?: number; // KataGo play selection weight (LCB adjusted)
     utility?: number; // KataGo utilityAvg for this child, black perspective
-    humanPrior?: number; // human SL policy for this move, when that net is loaded
     ownership?: FloatArray; // len 361, +1 black owns, -1 white owns (position after this move)
   }>;
 }
@@ -127,8 +115,6 @@ export interface KataGoAnalyzeUpdate {
   modelName?: string;
   analysis?: KataGoAnalysisPayload;
   error?: string;
-  /** Set when a human SL policy was asked for but could not be produced. */
-  humanPolicyError?: string;
 }
 
 export interface KataGoAnalyzeResponse {
@@ -140,7 +126,6 @@ export interface KataGoAnalyzeResponse {
   modelName?: string;
   analysis?: KataGoAnalysisPayload;
   error?: string;
-  humanPolicyError?: string;
 }
 
 export interface KataGoEvalRequest {

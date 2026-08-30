@@ -1,6 +1,5 @@
 export type BoardSize = 5 | 7 | 9 | 11 | 13 | 15 | 17 | 19;
 export const DEFAULT_BOARD_SIZE: BoardSize = 19;
-export const KOMI = 6.5;
 
 export type Player = 'black' | 'white';
 export type Intersection = Player | null;
@@ -121,67 +120,21 @@ export interface GameNode {
   drawings?: BoardDrawing[]; // Freehand pen/highlight strokes, session-only.
 }
 
-export type ResolvedUiThemeId = 'noir' | 'kaya' | 'studio' | 'light';
-export type UiThemeId = ResolvedUiThemeId | 'system';
-export type UiDensityId = 'compact' | 'comfortable' | 'large';
 export type AppLocaleId = 'en' | 'zh' | 'zh-TW' | 'ko' | 'ja' | 'fr' | 'de' | 'es' | 'it' | 'uk' | 'ru' | 'pt' | 'vi';
 
 export interface GameSettings {
   appLocale: AppLocaleId;
   soundEnabled: boolean;
-  showCoordinates: boolean;
-  showMoveNumbers: boolean;
-  showBoardControls: boolean;
-  showAnalysisBar: boolean;
-  noteFontScale: number; // Font-size multiplier for the notes panel preview/editor (A- / A+).
-  fuzzyStonePlacement: boolean;
-  showNextMovePreview: boolean;
-  uiTheme: UiThemeId;
-  uiDensity: UiDensityId;
-  gamepadNavigation: boolean;
-  hapticFeedback: boolean;
   defaultBoardSize: BoardSize;
   defaultHandicap: number;
-  timerSound: boolean; // KaTrain timer/sound
-  timerMainTimeMinutes: number; // KaTrain timer/main_time (minutes)
-  timerByoLengthSeconds: number; // KaTrain timer/byo_length (seconds)
-  timerByoPeriods: number; // KaTrain timer/byo_periods
-  timerMinimalUseSeconds: number; // KaTrain timer/minimal_use (seconds)
-  showLastNMistakes: number; // KaTrain-like eval dots: 0 disables, else show last N moves
   mistakeThreshold: number; // Points lost to consider a mistake for navigation/highlights.
   loadSgfRewind: boolean; // KaTrain general/load_sgf_rewind
-  loadSgfFastAnalysis: boolean; // KaTrain general/load_fast_analysis
-  animPvTimeSeconds: number; // KaTrain general/anim_pv_time
   gameRules: GameRules; // KataGo rules preset (KaTrain default: japanese)
-  trainerLowVisits: number; // KaTrain trainer/low_visits
-  trainerTheme: 'theme:normal' | 'theme:red-green-colourblind'; // KaTrain trainer/theme
   trainerEvalThresholds: number[]; // KaTrain trainer/eval_thresholds
-  trainerShowDots: boolean[]; // KaTrain trainer/show_dots
-  trainerSaveFeedback: boolean[]; // KaTrain trainer/save_feedback
-  trainerEvalShowAi: boolean; // KaTrain trainer/eval_show_ai
-  trainerTopMovesShow:
-    | 'top_move_score'
-    | 'top_move_delta_score'
-    | 'top_move_winrate'
-    | 'top_move_delta_winrate'
-    | 'top_move_visits'
-    | 'top_move_nothing'; // KaTrain trainer/top_moves_show
-  trainerTopMovesShowSecondary:
-    | 'top_move_score'
-    | 'top_move_delta_score'
-    | 'top_move_winrate'
-    | 'top_move_delta_winrate'
-    | 'top_move_visits'
-    | 'top_move_nothing'; // KaTrain trainer/top_moves_show_secondary
-  trainerExtraPrecision: boolean; // KaTrain trainer/extra_precision
-  trainerSaveAnalysis: boolean; // KaTrain trainer/save_analysis
-  trainerSaveMarks: boolean; // KaTrain trainer/save_marks
-  trainerLockAi: boolean; // KaTrain trainer/lock_ai
   analysisShowChildren: boolean; // Q
   analysisShowEval: boolean; // W
   analysisShowHints: boolean; // E
   analysisShowPolicy: boolean; // R
-  analysisPolicyMetric: 'policy' | 'delta_score' | 'delta_winrate';
   analysisShowOwnership: boolean; // T
   katagoModelUrl: string;
   katagoBackend: KataGoBackendPreference;
@@ -198,7 +151,5 @@ export interface GameSettings {
   katagoNnRandomize: boolean; // KataGo nnRandomize (random symmetries)
   katagoConservativePass: boolean; // KataGo conservativePass (KaTrain default: true)
   katagoFillDameBeforePass: boolean; // KataGo fillDameBeforePass, territory scoring only
-  // KataGo human SL net: predicts how a human of a given rank would play.
-  analysisPolicySource: 'engine' | 'human'; // which policy the R overlay draws
   teachNumUndoPrompts: number[]; // KaTrain trainer/num_undo_prompts
 }

@@ -955,48 +955,16 @@ initialRoot.properties = { RU: [rulesToSgfRu('japanese')] };
 const defaultSettings: GameSettings = {
   appLocale: 'en',
   soundEnabled: true,
-  showCoordinates: true,
-  showMoveNumbers: false,
-  showBoardControls: true,
-  showAnalysisBar: true,
-  noteFontScale: 1,
-  fuzzyStonePlacement: true,
-  showNextMovePreview: true,
-  // 'system' resolves to noir/light per the device's color-scheme preference.
-  uiTheme: 'system',
-  uiDensity: 'comfortable',
-  gamepadNavigation: true,
-  hapticFeedback: true,
   defaultBoardSize: DEFAULT_BOARD_SIZE,
   defaultHandicap: 0,
-  timerSound: true,
-  timerMainTimeMinutes: 0,
-  timerByoLengthSeconds: 30,
-  timerByoPeriods: 5,
-  timerMinimalUseSeconds: 0,
-  showLastNMistakes: 3,
   mistakeThreshold: 3.0,
   loadSgfRewind: true,
-  loadSgfFastAnalysis: false,
-  animPvTimeSeconds: 0.5,
   gameRules: 'japanese',
-  trainerLowVisits: 25,
-  trainerTheme: 'theme:normal',
   trainerEvalThresholds: [12, 6, 3, 1.5, 0.5, 0],
-  trainerShowDots: [true, true, true, true, true, true],
-  trainerSaveFeedback: [true, true, true, true, false, false],
-  trainerEvalShowAi: true,
-  trainerTopMovesShow: 'top_move_delta_score',
-  trainerTopMovesShowSecondary: 'top_move_visits',
-  trainerExtraPrecision: false,
-  trainerSaveAnalysis: true,
-  trainerSaveMarks: false,
-  trainerLockAi: false,
   analysisShowChildren: true,
   analysisShowEval: true,
   analysisShowHints: true,
   analysisShowPolicy: false,
-  analysisPolicyMetric: 'policy',
   analysisShowOwnership: true,
   katagoModelUrl: defaultModelUrl(),
   katagoBackend: 'webgpu',
@@ -1015,7 +983,6 @@ const defaultSettings: GameSettings = {
   katagoAnalysisPvLen: 15,
   katagoNnRandomize: true,
   katagoConservativePass: true,
-  analysisPolicySource: 'engine',
   teachNumUndoPrompts: [1, 1, 1, 0.5, 0, 0],
 };
 
@@ -3535,16 +3502,11 @@ const showNotification = (next: StoreNotification | null) => {
   useGameStore.setState({ notification: next });
 };
 
-// Set while the toast is hovered or focused. A message that someone is reading
-// — or reaching across to copy — should not time out under the pointer.
-let notificationHeld = false;
-
 const scheduleNotificationDismiss = () => {
   if (notificationAutoDismissTimer) {
     globalThis.clearTimeout(notificationAutoDismissTimer);
     notificationAutoDismissTimer = null;
   }
-  if (notificationHeld) return;
   const notification = notificationState.displayed;
   const delay = autoDismissDelay(notification);
   if (!notification || delay === null) return;
@@ -3571,13 +3533,6 @@ useGameStore.subscribe((state, previousState) => {
   }
   scheduleNotificationDismiss();
 });
-
-/** Hold or release the visible toast's dismissal timer (hover and focus). */
-export const setNotificationHeld = (held: boolean) => {
-  if (notificationHeld === held) return;
-  notificationHeld = held;
-  scheduleNotificationDismiss();
-};
 
 analysisQueue.subscribeCacheSize((queueCacheSize) => {
   useGameStore.setState((state) => ({

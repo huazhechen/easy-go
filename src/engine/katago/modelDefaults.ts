@@ -3,8 +3,6 @@ import { publicUrl } from '../../utils/publicUrl';
 export const KATAGO_RECOMMENDED_MODEL_NAME = 'kata1-b18c384nbt-s9996604416-d4316597426';
 export const KATAGO_RECOMMENDED_MODEL_URL =
   'https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz';
-export const KATAGO_RECOMMENDED_MODEL_UPLOADED = '2024-05-26';
-export const KATAGO_RECOMMENDED_MODEL_SIZE = '~96 MB';
 
 export const KATAGO_SMALL_MODEL_PATH = 'models/katago-small.bin.gz';
 
@@ -56,8 +54,8 @@ export interface KataGoModelTier {
    */
   md5: string;
   /**
-   * Per-move thinking time slider range (ms) for this tier: B6 1–15s,
-   * B10 2–30s, B18 5–60s. Each tier keeps its own independent value.
+   * Per-move thinking time slider range (ms) for this tier: B6 1–10s,
+   * B10 1–20s, B18 1–60s. Each tier keeps its own independent value.
    */
   minThinkingMs: number;
   /** Inclusive upper bound (ms). */
@@ -89,7 +87,7 @@ export const KATAGO_MODEL_TIERS: readonly KataGoModelTier[] = [
     remoteUrl: null,
     md5: '7c990719eb87a784407f30f18daeb105',
     minThinkingMs: 1_000,
-    maxThinkingMs: 15_000,
+    maxThinkingMs: 10_000,
     thinkingStepMs: 1_000,
     defaultThinkingMs: 5_000,
     requiresDownload: false,
@@ -104,8 +102,8 @@ export const KATAGO_MODEL_TIERS: readonly KataGoModelTier[] = [
     localPath: 'models/katago-b10.bin.gz',
     remoteUrl: KATAGO_B10_REMOTE_URL,
     md5: 'da129716a16441bb01759e33c648d2c1',
-    minThinkingMs: 2_000,
-    maxThinkingMs: 30_000,
+    minThinkingMs: 1_000,
+    maxThinkingMs: 20_000,
     thinkingStepMs: 1_000,
     defaultThinkingMs: 10_000,
     requiresDownload: false,
@@ -127,7 +125,7 @@ export const KATAGO_MODEL_TIERS: readonly KataGoModelTier[] = [
     localPath: 'models/katago-b18.bin.gz',
     remoteUrl: KATAGO_RECOMMENDED_MODEL_URL,
     md5: 'fb3e36c00914f5e3edaf123c06d1b4e3',
-    minThinkingMs: 5_000,
+    minThinkingMs: 1_000,
     maxThinkingMs: 60_000,
     thinkingStepMs: 1_000,
     defaultThinkingMs: 30_000,
@@ -161,10 +159,3 @@ export const defaultModelUrl = (): string => {
   const tier = getModelTier(DEFAULT_MODEL_TIER_ID);
   return tier ? publicUrl(tier.localPath) : publicUrl(KATAGO_SMALL_MODEL_PATH);
 };
-
-// KataGo's human SL net (v1.15+): a second model that predicts how a human of a
-// given rank would play, rather than the strongest move.
-export const KATAGO_HUMAN_MODEL_NAME = 'b18c384nbt-humanv0';
-export const KATAGO_HUMAN_MODEL_URL =
-  'https://github.com/lightvector/KataGo/releases/download/v1.15.0/b18c384nbt-humanv0.bin.gz';
-export const KATAGO_HUMAN_MODEL_SIZE = '~99 MB';

@@ -373,31 +373,6 @@ export function markSymmetryDuplicateMoves(
  * root symmetry pruning applies. Also reports the symmetries that were folded
  * away so the analysis output can put the copies back.
  */
-/**
- * The moves a human of the configured rank is most likely to play, as a mask.
- * They are added to the root's children so the report says what those moves are
- * actually worth, which is the point of loading the human net at all.
- */
-export function topHumanMovesMask(humanPolicy: ArrayLike<number> | null | undefined, count: number): Uint8Array | null {
-  if (!humanPolicy || count <= 0) return null;
-  const best: Array<{ move: number; prob: number }> = [];
-  for (let p = 0; p < BOARD_AREA; p++) {
-    const prob = humanPolicy[p] ?? -1;
-    if (prob <= 0) continue;
-    if (best.length < count) {
-      best.push({ move: p, prob });
-      if (best.length === count) best.sort((a, b) => a.prob - b.prob);
-    } else if (prob > best[0]!.prob) {
-      best[0] = { move: p, prob };
-      best.sort((a, b) => a.prob - b.prob);
-    }
-  }
-  if (best.length === 0) return null;
-  const mask = new Uint8Array(BOARD_AREA);
-  for (const entry of best) mask[entry.move] = 1;
-  return mask;
-}
-
 function buildRootMoveMask(args: {
   regionOfInterest?: RegionOfInterest | null;
   stones: Uint8Array;
@@ -468,8 +443,6 @@ function expandNode(args: {
   maxChildren: number;
   libertyMap?: Uint8Array;
   allowedMoves?: Uint8Array;
-  /** Moves to keep as children even if the policy would rank them out of the top set. */
-  forcedMoves?: Uint8Array;
   policyOut?: Float32Array; // len 362, illegal = -1, pass at index 361
   policyOutputScaling?: number;
   /**
@@ -591,7 +564,6 @@ function expandNode(args: {
 
   const topMoves = scratch.topMoves;
   const topPriors = scratch.topPriors;
-  const forcedMoves = args.forcedMoves;
   const maxKids = Math.max(0, maxChildren);
   let topCount = 0;
   let minIdx = 0;
@@ -600,8 +572,6 @@ function expandNode(args: {
     // isAllowedRootMove. Policy itself is normalized over every legal move, so
     // masking does not inflate the priors of the moves that survive.
     if (allowedMoves && allowedMoves[movesScratch[i]!] === 0) continue;
-    // Forced moves are added afterwards so they cannot be crowded out.
-    if (forcedMoves && forcedMoves[movesScratch[i]!] === 1) continue;
     const prior = priorsScratch[i]!;
     if (topCount < maxKids) {
       topMoves[topCount] = movesScratch[i]!;
@@ -637,16 +607,6 @@ function expandNode(args: {
     const idx = order[i]!;
     edges.push({ move: topMoves[idx]!, prior: topPriors[idx]!, child: null, visits: 0 });
   }
-  if (forcedMoves) {
-    // Their real policy prior, so the search still treats them on their merits;
-    // forcing only guarantees they are looked at at all.
-    for (let i = 0; i < moveCount; i++) {
-      const move = movesScratch[i]!;
-      if (forcedMoves[move] !== 1) continue;
-      if (allowedMoves && allowedMoves[move] === 0) continue;
-      edges.push({ move, prior: priorsScratch[i]!, child: null, visits: 0 });
-    }
-  }
   edges.push({ move: PASS_MOVE, prior: passPrior, child: null, visits: 0 });
 
   node.edges = edges;
@@ -670,7 +630,6 @@ async function buildRootEval(args: {
   maxChildren: number;
   regionOfInterest?: RegionOfInterest | null;
   rootSymmetryPruning?: boolean;
-  forcedRootMoves?: Uint8Array | null;
   avoidRootMoves?: Int32Array | null;
   outputScaleMultiplier: number;
   /** KataGo ignorePreRootHistory: the root's history planes stay empty. */
@@ -768,7 +727,6 @@ async function buildRootEval(args: {
     maxChildren: args.maxChildren,
     libertyMap: rootEval.libertyMap,
     allowedMoves: rootAllowedMoves ?? undefined,
-    forcedMoves: args.forcedRootMoves ?? undefined,
     policyOut: rootPolicy,
     policyOutputScaling: args.outputScaleMultiplier,
     rootPolicyTemperature: args.rootPolicyTemperature,
@@ -1045,15 +1003,6 @@ function downweightBadChildrenAndNormalizeWeight(args: {
 let SUBTREE_VALUE_BIAS_FACTOR: number = 0.45;
 const SUBTREE_VALUE_BIAS_WEIGHT_EXPONENT = 0.85;
 const SUBTREE_BIAS_PATTERN_RADIUS = 2; // KataGo hashes a 5x5 window
-
-/** How many of the human net's favourite moves to guarantee a place in the report. */
-const DEFAULT_HUMAN_MOVE_COUNT = 5;
-/**
- * Visits every such move gets before normal selection takes over. Being a child is
- * not enough: a move a strong net dislikes would otherwise sit at zero visits and
- * the report could not say what it costs, which is the whole point of showing it.
- */
-const HUMAN_MOVE_MIN_VISITS = 2;
 
 type SubtreeBiasEntry = { deltaUtilitySum: number; weightSum: number };
 
@@ -1626,34 +1575,6 @@ function exploreScaling(totalChildWeight: number, parentUtilityStdevFactor: numb
   );
 }
 
-// KataGo humanSLCpuctExploration / humanSLCpuctPermanent. Zero by default in
-// searchparams.cpp; these are the values its human-bot configs ship
-// (cpp/configs/gtp_human9d_search_example.cfg), and they only matter on the
-// playouts that actually explore from the human policy.
-const HUMAN_SL_CPUCT_EXPLORATION: number = 0.5;
-const HUMAN_SL_CPUCT_PERMANENT: number = 2.0;
-
-/**
- * KataGo Search::getExploreScalingHuman. The human policy is not a value estimate,
- * so this drops the utility-stdev factor and grows with sqrt of the weight already
- * spent rather than its log.
- */
-export function exploreScalingHuman(totalChildWeight: number): number {
-  return (
-    (HUMAN_SL_CPUCT_EXPLORATION + HUMAN_SL_CPUCT_PERMANENT * Math.sqrt(totalChildWeight)) *
-    Math.sqrt(totalChildWeight + TOTALCHILDWEIGHT_PUCT_OFFSET)
-  );
-}
-
-/** How often a playout should explore from the human policy instead of the net's. */
-export type HumanExploreParams = {
-  policy: ArrayLike<number>; // len BOARD_AREA + 1, illegal = -1, pass last
-  /** humanSLRootExploreProbWeightless: explore, but do not charge the node for it. */
-  weightlessProb: number;
-  /** humanSLRootExploreProbWeightful: explore and pay for it like any other visit. */
-  weightfulProb: number;
-};
-
 class Rand {
   private spare: number | null = null;
 
@@ -1719,8 +1640,6 @@ function computeParentSelectionStats(
   includeInFlight: boolean,
   policyProbMassVisitedOverride: number | null = null,
   out: ParentSelectionStats = parentSelectionStatsScratch,
-  /** Set on a playout that explores from the human policy rather than the net's. */
-  humanPolicy: ArrayLike<number> | null = null,
   /**
    * False on a weightless playout, where KataGo redoes PUCT against the child's own
    * weight rather than the share this node's edges have paid for.
@@ -1736,7 +1655,7 @@ function computeParentSelectionStats(
     for (const e of edges) {
       const child = e.child;
       if (!child) continue;
-      const prior = humanPolicy ? (humanPolicy[e.move] ?? -1) : e.prior;
+      const prior = e.prior;
       if (prior < 0) continue;
       const w =
         (countEdgeVisit ? edgeChildWeight(e) : child.weightSum) +
@@ -1798,9 +1717,7 @@ function computeParentSelectionStats(
   out.parentUtilityStdevFactor = parentUtilityStdevFactor;
   out.parentWeightPerVisit = visits > 0 ? weightSum / visits : 1.0;
   out.fpuValue = fpuValue;
-  out.scaling = humanPolicy
-    ? exploreScalingHuman(totalChildWeight)
-    : exploreScaling(totalChildWeight, parentUtilityStdevFactor);
+  out.scaling = exploreScaling(totalChildWeight, parentUtilityStdevFactor);
   return out;
 }
 
@@ -1816,8 +1733,6 @@ function selectEdge(
   rand: Rand,
   endingBonus: Float64Array | null = null,
   recentScoreCenter = 0,
-  forcedRootMoves: Uint8Array | null = null,
-  humanExplore: HumanExploreParams | null = null,
   /** Plies from the root, for KataGo's avoidMoveUntilByLoc. */
   depth = 0,
   avoidMoveUntil: Int32Array | null = null,
@@ -1829,22 +1744,7 @@ function selectEdge(
   const pla = node.playerToMove;
   const sign = pla === BLACK ? 1 : -1;
 
-  // KataGo rolls once per playout for whether to descend by the human policy, and
-  // a weightless roll additionally means the node is not charged for the visit.
-  let humanPolicy: ArrayLike<number> | null = null;
   out.countEdgeVisit = true;
-  if (humanExplore) {
-    const totalHumanProb = humanExplore.weightlessProb + humanExplore.weightfulProb;
-    if (totalHumanProb > 0) {
-      const r = rand.nextDouble();
-      if (r < humanExplore.weightlessProb) {
-        humanPolicy = humanExplore.policy;
-        out.countEdgeVisit = false;
-      } else if (r < totalHumanProb) {
-        humanPolicy = humanExplore.policy;
-      }
-    }
-  }
   const countEdgeVisit = out.countEdgeVisit;
 
   const stats = computeParentSelectionStats(
@@ -1853,7 +1753,6 @@ function selectEdge(
     true,
     null,
     parentSelectionStatsScratch,
-    humanPolicy,
     countEdgeVisit
   );
   const fpuValue = stats.fpuValue;
@@ -1865,19 +1764,6 @@ function selectEdge(
   const applyWideRootNoise = isRoot && wideRootNoise > 0 && countEdgeVisit;
   const wideRootNoisePolicyExponent = applyWideRootNoise ? 1.0 / (4.0 * wideRootNoise + 1.0) : 1.0;
 
-  if (isRoot && forcedRootMoves) {
-    // Give the moves we promised to report their first visits before anything else.
-    for (const e of edges) {
-      if (e.move === PASS_MOVE || forcedRootMoves[e.move] !== 1) continue;
-      const child = e.child;
-      const visits = child ? child.visits + child.inFlight : 0;
-      if (visits < HUMAN_MOVE_MIN_VISITS) {
-        out.edge = e;
-        return out;
-      }
-    }
-  }
-
   const rootEndingBonus = isRoot ? endingBonus : null;
   const utilityRadiusForVirtualLoss = WIN_LOSS_UTILITY_FACTOR + STATIC_SCORE_UTILITY_FACTOR + DYNAMIC_SCORE_UTILITY_FACTOR;
 
@@ -1885,7 +1771,7 @@ function selectEdge(
     const child = e.child;
     // KataGo avoidMoveUntilByLoc: off limits until this many plies from the root.
     if (avoidMoveUntil && avoidMoveUntil[e.move]! > depth) continue;
-    let prior = humanPolicy ? (humanPolicy[e.move] ?? -1) : e.prior;
+    let prior = e.prior;
     // KataGo treats a negative policy entry as an illegal move and skips it.
     if (prior < 0) continue;
     const edgeWeight = child ? (countEdgeVisit ? edgeChildWeight(e) : child.weightSum) : 0;
@@ -2479,8 +2365,8 @@ export type AnalysisPayloadMove = {
   visits: number;
   /**
    * KataGo's edgeVisits: what the parent invested in this move. `visits` counts the
-   * child node itself, which can be more when human SL exploration or a graph search
-   * transposition brought other lines to the same position.
+   * child node itself, which can be more when a graph search transposition brought
+   * other lines to the same position.
    */
   edgeVisits: number;
   /**
@@ -2506,8 +2392,6 @@ export type AnalysisPayloadMove = {
   utility: number;
   /** Set when this move is a symmetric copy of the move that was actually searched. */
   isSymmetryOf?: { x: number; y: number };
-  /** How likely a human of the configured rank is to play this move, if known. */
-  humanPrior?: number;
   ownership?: FloatArray;
 };
 
@@ -3332,12 +3216,6 @@ export class MctsSearch {
   private rootSymmetries: number[];
   private roiMask: Uint8Array | null;
   private rootEndingBonus: Float64Array | null;
-  private forcedRootMoves: Uint8Array | null;
-  /**
-   * KataGo humanSLRootExploreProb*: how often a playout leaves the root by the
-   * human policy instead of the net's. Null when the caller asked for neither.
-   */
-  private humanExplore: HumanExploreParams | null;
   /**
    * KataGo ignorePreRootHistory, which its analysis engine turns on by default: the
    * network sees no moves from before the root, only the ones the search itself
@@ -3420,8 +3298,6 @@ export class MctsSearch {
     roiMask: Uint8Array | null;
     rootSymmetryPruning: boolean;
     rootEndingBonus: Float64Array | null;
-    forcedRootMoves: Uint8Array | null;
-    humanExplore: HumanExploreParams | null;
     ignorePreRootHistory: boolean;
     enablePassingHacks: boolean;
     useGraphSearch: boolean;
@@ -3470,8 +3346,6 @@ export class MctsSearch {
     this.roiMask = args.roiMask;
     this.rootSymmetryPruning = args.rootSymmetryPruning;
     this.rootEndingBonus = args.rootEndingBonus;
-    this.forcedRootMoves = args.forcedRootMoves;
-    this.humanExplore = args.humanExplore;
     this.ignorePreRootHistory = args.ignorePreRootHistory;
     this.enablePassingHacks = args.enablePassingHacks;
     this.useGraphSearch = args.useGraphSearch;
@@ -3608,15 +3482,6 @@ export class MctsSearch {
     rootSymmetrySamples?: number;
     regionOfInterest?: RegionOfInterest | null;
     rootSymmetryPruning?: boolean;
-    /** Human SL policy for the root position, used to widen the candidate list. */
-    humanPolicy?: ArrayLike<number> | null;
-    humanMoveCount?: number;
-    /**
-     * KataGo humanSLRootExploreProbWeightless / Weightful. Both default to 0, as
-     * KataGo's do; its human-bot config sets the weightless one to 0.8.
-     */
-    humanSlRootExploreProbWeightless?: number;
-    humanSlRootExploreProbWeightful?: number;
     /**
      * KataGo ignorePreRootHistory. Defaults to true, as it does for KataGo's
      * analysis engine (Setup::DEFAULT_ANALYSIS_IGNORE_PRE_ROOT_HISTORY).
@@ -3665,7 +3530,6 @@ export class MctsSearch {
       player: m.player,
     }));
 
-    const forcedRootMoves = topHumanMovesMask(args.humanPolicy, args.humanMoveCount ?? DEFAULT_HUMAN_MOVE_COUNT);
     const ignorePreRootHistory = args.ignorePreRootHistory !== false;
     const enablePassingHacks = args.enablePassingHacks ?? ENABLE_PASSING_HACKS;
     const useGraphSearch = args.useGraphSearch ?? USE_GRAPH_SEARCH;
@@ -3686,12 +3550,6 @@ export class MctsSearch {
             boardWidth: BOARD_SIZE,
             boardHeight: BOARD_SIZE,
           });
-    const weightlessProb = Math.max(0, Math.min(1, args.humanSlRootExploreProbWeightless ?? 0));
-    const weightfulProb = Math.max(0, Math.min(1, args.humanSlRootExploreProbWeightful ?? 0));
-    const humanExplore: HumanExploreParams | null =
-      args.humanPolicy && weightlessProb + weightfulProb > 0
-        ? { policy: Float32Array.from(args.humanPolicy), weightlessProb, weightfulProb }
-        : null;
     const rootNode = new Node(playerToColor(args.currentPlayer));
     const {
       rootSymmetries,
@@ -3732,7 +3590,6 @@ export class MctsSearch {
       maxChildren: args.maxChildren,
       regionOfInterest: args.regionOfInterest,
       rootSymmetryPruning: args.rootSymmetryPruning,
-      forcedRootMoves,
       avoidRootMoves:
         args.currentPlayer === 'black' ? (args.avoidMoveUntilBlack ?? null) : (args.avoidMoveUntilWhite ?? null),
       outputScaleMultiplier,
@@ -3793,8 +3650,6 @@ export class MctsSearch {
       roiMask,
       rootSymmetryPruning: args.rootSymmetryPruning !== false,
       rootEndingBonus,
-      forcedRootMoves,
-      humanExplore,
       ignorePreRootHistory,
       enablePassingHacks,
       useGraphSearch,
@@ -3928,10 +3783,6 @@ export class MctsSearch {
     this.currentPlayer = args.currentPlayer;
     this.rootSymmetries = rootSymmetries;
     this.roiMask = roiMask;
-    // The human moves belonged to the old root; the caller starts a new search when
-    // it wants them for the new position.
-    this.forcedRootMoves = null;
-    this.humanExplore = null;
     this.rootRaw = {
       winRate: rawWinRate,
       scoreLead: rawScoreLead,
@@ -4075,8 +3926,6 @@ export class MctsSearch {
             this.rand,
             this.rootEndingBonus,
             this.recentScoreCenter,
-            this.forcedRootMoves,
-            isRootNode ? this.humanExplore : null,
             depth,
             player === BLACK ? this.avoidMoveUntilBlack : this.avoidMoveUntilWhite
           );
@@ -4521,8 +4370,6 @@ export class MctsSearch {
     ownership: FloatArray;
     ownershipStdev: FloatArray;
     policy: FloatArray;
-    // Filled in by the worker when a human SL profile was requested.
-    humanPolicy?: FloatArray;
     moves: AnalysisPayloadMove[];
   } {
     const topK = Math.max(1, Math.min(args.topK, 50));

@@ -38,7 +38,6 @@ class KataGoEngineClient {
   private backend: string | null = null;
   private modelName: string | null = null;
   private lastLoggedEngineLabel: string | null = null;
-  private lastHumanPolicyError: string | null = null;
   private crashed: Error | null = null;
 
   constructor() {
@@ -72,7 +71,6 @@ class KataGoEngineClient {
         if (!pending) return;
         if (msg.canceled || msg.error === 'canceled') return;
         this.syncEngineInfo(msg);
-        this.reportHumanPolicyError(msg.humanPolicyError);
         if (!msg.ok || !msg.analysis) return;
         pending.onProgress?.(msg.analysis);
         return;
@@ -86,7 +84,6 @@ class KataGoEngineClient {
           return;
         }
         this.syncEngineInfo(msg);
-        this.reportHumanPolicyError(msg.humanPolicyError);
         if (!msg.ok || !msg.analysis) pending.reject(new Error(msg.error ?? 'Analysis failed'));
         else pending.resolve(msg.analysis);
         return;
@@ -166,16 +163,6 @@ class KataGoEngineClient {
     }
   }
 
-  /**
-   * The human SL net is optional and never blocks the analysis, so a failure to
-   * load it would otherwise be invisible. Report each distinct problem once.
-   */
-  private reportHumanPolicyError(message?: string): void {
-    if (!message || message === this.lastHumanPolicyError) return;
-    this.lastHumanPolicyError = message;
-    console.warn(`[katago] human policy unavailable: ${message}`);
-  }
-
   private syncEngineInfo(msg: { backend?: string; modelName?: string }): void {
     let changed = false;
     if (typeof msg.backend === 'string' && msg.backend !== this.backend) {
@@ -251,9 +238,6 @@ class KataGoEngineClient {
     ownershipRefreshIntervalMs?: number;
     reuseTree?: boolean;
     ownershipMode?: 'none' | 'root' | 'tree';
-    humanModelUrl?: string;
-    humanSlProfile?: string;
-    humanSlRootExploreProb?: number;
     rootPolicyTemperature?: number;
     fillDameBeforePass?: boolean;
     avoidMoves?: Array<{ x: number; y: number; player?: Player; untilDepth?: number }>;
@@ -294,9 +278,6 @@ class KataGoEngineClient {
       ownershipRefreshIntervalMs: args.ownershipRefreshIntervalMs,
       reuseTree: args.reuseTree,
       ownershipMode: args.ownershipMode,
-      humanModelUrl: args.humanModelUrl,
-      humanSlProfile: args.humanSlProfile,
-      humanSlRootExploreProb: args.humanSlRootExploreProb,
       rootPolicyTemperature: args.rootPolicyTemperature,
       fillDameBeforePass: args.fillDameBeforePass,
       avoidMoves: args.avoidMoves,

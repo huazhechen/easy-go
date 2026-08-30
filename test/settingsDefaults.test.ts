@@ -6,16 +6,4 @@ describe('settings defaults', () => {
     expect(DEFAULT_KATAGO_VISITS).toBe(5000);
     expect(useGameStore.getState().settings.katagoVisits).toBe(5000);
   });
-
-  it('enables gamepad review navigation by default', () => {
-    expect(useGameStore.getState().settings.gamepadNavigation).toBe(true);
-  });
-
-  it('enables touch haptics by default when the browser supports them', () => {
-    expect(useGameStore.getState().settings.hapticFeedback).toBe(true);
-  });
-
-  it('enables fuzzy stone placement by default', () => {
-    expect(useGameStore.getState().settings.fuzzyStonePlacement).toBe(true);
-  });
 });

@@ -3,49 +3,20 @@
 Easy Go is a browser-based Go study app inspired by
 [KaTrain](https://github.com/sanderland/katrain). It runs KataGo-style neural
 network evaluation locally in the browser with TensorFlow.js, keeps the search
-work off the main thread in a Web Worker, and can be installed as an offline
-PWA. There is no analysis server to run.
+work off the main thread in a Web Worker, and needs no analysis server.
 
 **Live app:** https://huazhechen.github.io/easy-go/
 
 ## Highlights
 
-**Analyze games**
-
-- Top-move hints, principal variations, ownership, policy, win rate, and score
-  lead.
-- Quick, fast, and full-game analysis passes with per-position caching.
-- KaTrain-style move quality, phase summaries, and game reports.
-
-**Study and play**
-
-- Play against browser KataGo, which always plays the strongest move it finds.
-- Teach mode, byo-yomi clocks, resign/pass handling, manual scoring, and 9x9,
-  13x13, or 19x19 boards.
-- Branching move trees with notes, setup stones, markup, and SGF-compatible
-  export.
-- Study tools: interactive fundamentals lessons, a score-estimation quiz, a
-  "climb the ranks" tournament ladder against calibrated bots, and a
-  searchable pro game library. Open any of them from the menu's Study &
-  Practice section or the command palette.
-
-**Load and save**
-
-- Import SGF files by picker, paste, drag and drop, or Online-Go game URL.
-- Import board positions from a photo or live camera capture.
-- Store games in an IndexedDB library with folders, bundled famous games, and
-  zip backup/restore.
-- Auto-save the current session and recover after a crash or reload.
-
-**Use it anywhere**
-
-- Responsive desktop and mobile layouts.
-- UI themes, keyboard shortcuts, command palette, gamepad
-  navigation, sound, and haptics.
-- Document language metadata for 13 languages, which tags the page and the SGF
-  you export. The interface itself is English only.
-- Offline app shell, default model, TensorFlow.js WASM files, and board assets
-  are cached by the production service worker.
+- Play against browser KataGo, which always plays the strongest move it finds,
+  or watch it play itself in self-play mode.
+- New games from 5×5 to 19×19, choosing to play Black or White and one of three
+  locally-hosted model tiers, each with its own per-move thinking time.
+- Live win rate, top-move recommendation hints that keep improving while you
+  play, undo, pass, and a one-tap territory score judgment.
+- The strongest B18 model downloads in the background with progress, is cached
+  in IndexedDB, and is verified by MD5 before it is used.
 
 ## Quick Start
 
@@ -86,13 +57,13 @@ game dialog:
   re-fetched when they mismatch.
 
 Each tier has its own independent per-move thinking-time slider in whole
-seconds — B6: 1–15 s, B10: 2–30 s, B18: 5–60 s. Switching to a tier resets
+seconds — B6: 1–10 s, B10: 1–20 s, B18: 1–60 s. Switching to a tier resets
 its slider to the middle default (B6 5 s, B10 10 s, B18 30 s). Model buttons
-show "tier + seconds" (e.g. B6 13s) and update live while dragging the slider;
-no size labels are shown. The slider sits directly under the model buttons and
-follows the current wood theme color. Download progress uses real byte sizes
-instead of a hardcoded size label. Hint recommendations deliberately keep a
-huge fixed budget (5000 visits / 60 s) regardless of tier or thinking time.
+show only the tier name until selected; the selected button also shows its
+seconds (e.g. B10 10s) and updates live while dragging the slider. No size
+labels are shown. Download progress uses real byte sizes instead of a hardcoded
+size label. Hint recommendations keep improving through an independent
+continuous search budget, separate from the per-move thinking time.
 
 The parser supports KataGo model versions 8 through 16. Uploaded browser
 models are capped at 128 MB.
