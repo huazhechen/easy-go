@@ -47,6 +47,7 @@ import {
   isPassMove,
   nodeAnalysisPositionKey,
   nodeAnalysisVisitCount,
+  nodeToState,
   ownershipToTerritoryGrid,
   parentAnalysisPositionKey,
   syncRootSetupPropertiesFromBoard,
@@ -391,7 +392,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
             ownershipRefreshIntervalMs,
             reuseTree,
             ownershipMode: state.settings.katagoOwnershipMode,
-            analysisGroup: 'interactive',
             onProgress: onProgress
               ? (analysis) => {
                   if (ctx.signal.aborted || ctx.isStale()) return;
@@ -516,13 +516,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     state.currentNode.children.push(newNode);
 
     set({
-      currentNode: newNode,
-      board: newGameState.board,
-      currentPlayer: newGameState.currentPlayer,
-      moveHistory: newGameState.moveHistory,
-      capturedBlack: newGameState.capturedBlack,
-      capturedWhite: newGameState.capturedWhite,
-      analysisData: null, // Clear old analysis
+      ...nodeToState(newNode),
       activeBranchChildIds: rememberActiveBranchPath(state.activeBranchChildIds, newNode),
       treeVersion: state.treeVersion + 1,
     });
@@ -597,13 +591,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (!state.currentNode.parent) return {};
       const prevNode = state.currentNode.parent;
       return {
-        currentNode: prevNode,
-        board: prevNode.gameState.board,
-        currentPlayer: prevNode.gameState.currentPlayer,
-        moveHistory: prevNode.gameState.moveHistory,
-        capturedBlack: prevNode.gameState.capturedBlack,
-        capturedWhite: prevNode.gameState.capturedWhite,
-        analysisData: prevNode.analysis || null,
+        ...nodeToState(prevNode),
         // Preserve settings
         isAiPlaying: state.isAiPlaying,
         aiColor: state.aiColor,
@@ -614,13 +602,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   jumpToNode: (node) => {
     invalidateAiRequests('Navigated to node');
     return set((state) => ({
-      currentNode: node,
-      board: node.gameState.board,
-      currentPlayer: node.gameState.currentPlayer,
-      moveHistory: node.gameState.moveHistory,
-      capturedBlack: node.gameState.capturedBlack,
-      capturedWhite: node.gameState.capturedWhite,
-      analysisData: node.analysis || null,
+      ...nodeToState(node),
       activeBranchChildIds: rememberActiveBranchPath(state.activeBranchChildIds, node),
     }));
   },
@@ -663,21 +645,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     set({
       settings: nextSettings,
-      board: rootState.board,
-      currentPlayer: rootState.currentPlayer,
-      moveHistory: rootState.moveHistory,
-      capturedBlack: rootState.capturedBlack,
-      capturedWhite: rootState.capturedWhite,
+      ...nodeToState(newRoot),
       komi: rootState.komi,
       isAiPlaying: false,
       isAiThinking: false,
       aiColor: null,
-      analysisData: null,
       engineStatus: state.engineStatus,
       engineError: state.engineError,
 
-      rootNode: newRoot,
-      currentNode: newRoot,
       activeBranchChildIds: {},
       treeVersion: state.treeVersion + 1,
     });
@@ -716,10 +691,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     state.currentNode.children.push(newNode);
 
     set({
-      currentNode: newNode,
-      currentPlayer: newGameState.currentPlayer,
-      moveHistory: newGameState.moveHistory,
-      analysisData: null,
+      ...nodeToState(newNode),
       activeBranchChildIds: rememberActiveBranchPath(state.activeBranchChildIds, newNode),
       treeVersion: state.treeVersion + 1,
     });

@@ -1,4 +1,4 @@
-import type { BoardState, BoardSize, GameNode, GameRules, GameState, Move } from '../types';
+import type { AnalysisResult, BoardState, BoardSize, GameNode, GameRules, GameState, Move, Player } from '../types';
 import { DEFAULT_BOARD_SIZE } from '../types';
 import { createEmptyBoard, getHandicapPoints, normalizeBoardSize } from '../utils/boardSize';
 import { coordinateToSgf } from '../utils/sgf';
@@ -31,6 +31,27 @@ export const ownershipToTerritoryGrid = (ownership: ArrayLike<number>, boardSize
 };
 
 export const isPassMove = (move: Move | null | undefined): boolean => !!move && (move.x < 0 || move.y < 0);
+
+export interface NodeStateSlice {
+  currentNode: GameNode;
+  board: BoardState;
+  currentPlayer: Player;
+  moveHistory: Move[];
+  capturedBlack: number;
+  capturedWhite: number;
+  analysisData: AnalysisResult | null;
+}
+
+/** The flat store fields mirrored from a game-tree node's GameState. */
+export const nodeToState = (node: GameNode): NodeStateSlice => ({
+  currentNode: node,
+  board: node.gameState.board,
+  currentPlayer: node.gameState.currentPlayer,
+  moveHistory: node.gameState.moveHistory,
+  capturedBlack: node.gameState.capturedBlack,
+  capturedWhite: node.gameState.capturedWhite,
+  analysisData: node.analysis || null,
+});
 
 export const createNode = (
   parent: GameNode | null,

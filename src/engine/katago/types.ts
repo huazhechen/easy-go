@@ -17,7 +17,6 @@ export interface KataGoInitResponse {
 export interface KataGoAnalyzeRequest {
   type: 'katago:analyze';
   id: number;
-  analysisGroup?: 'interactive' | 'background';
   positionId?: string;
   parentPositionId?: string;
   positionKey?: string;

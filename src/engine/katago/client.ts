@@ -182,7 +182,6 @@ class KataGoEngineClient {
   }
 
   async analyze(args: {
-    analysisGroup?: 'interactive' | 'background';
     positionId?: string;
     parentPositionId?: string;
     positionKey?: string;
@@ -219,7 +218,6 @@ class KataGoEngineClient {
     const req: KataGoWorkerRequest = {
       type: 'katago:analyze',
       id,
-      analysisGroup: args.analysisGroup,
       positionId: args.positionId,
       parentPositionId: args.parentPositionId,
       positionKey: args.positionKey,

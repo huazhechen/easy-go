@@ -5,7 +5,7 @@ import '@tensorflow/tfjs-backend-webgpu';
 import '@tensorflow/tfjs-backend-wasm';
 import { setThreadsCount, setWasmPaths } from '@tensorflow/tfjs-backend-wasm';
 
-import type { KataGoAnalyzeRequest, KataGoWorkerRequest, KataGoWorkerResponse } from './types';
+import type { KataGoWorkerRequest, KataGoWorkerResponse } from './types';
 import { looksLikeMarkup, modelResponseError } from './modelResponse';
 import type { GameRules, KataGoBackendPreference } from '../../types';
 import { publicUrl } from '../../utils/publicUrl';
@@ -71,9 +71,7 @@ let searchKey: {
   nnRandomize: boolean;
   conservativePass: boolean;
 } | null = null;
-const latestAnalyzeByGroup = new Map<string, number>();
-let interactiveToken = 0;
-const analyzeMeta = new WeakMap<KataGoAnalyzeRequest, { analysisGroup: 'interactive' | 'background'; interactiveToken: number }>();
+let latestAnalyzeId = 0;
 
 // TensorFlow promises resume as microtasks. An extended search that only awaits
 // those promises can starve worker message events, preventing a newer position
@@ -358,13 +356,10 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
   }
 
   if (msg.type === 'katago:analyze') {
-    const meta = analyzeMeta.get(msg);
-    const analysisGroup = meta?.analysisGroup ?? msg.analysisGroup ?? 'background';
-    const interactiveTokenAtEnqueue = meta?.interactiveToken ?? interactiveToken;
-    const isStale = () => latestAnalyzeByGroup.get(analysisGroup) !== msg.id;
-    const isPreemptedByInteractive =
-      analysisGroup !== 'interactive' && interactiveToken !== interactiveTokenAtEnqueue;
-    const shouldAbort = () => isStale() || isPreemptedByInteractive;
+    // A request is stale as soon as a newer one has been posted; the message
+    // queue keeps the checks correct even while an older search is running.
+    const isStale = () => latestAnalyzeId !== msg.id;
+    const shouldAbort = () => isStale();
     const postCanceled = () =>
       post({
         type: 'katago:analyze_result',
@@ -644,10 +639,7 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
 self.onmessage = (ev: MessageEvent<KataGoWorkerRequest>) => {
   const msg = ev.data;
   if (msg.type === 'katago:analyze') {
-    const analysisGroup = msg.analysisGroup ?? 'background';
-    latestAnalyzeByGroup.set(analysisGroup, msg.id);
-    if (analysisGroup === 'interactive') interactiveToken++;
-    analyzeMeta.set(msg, { analysisGroup, interactiveToken });
+    latestAnalyzeId = msg.id;
   }
   queue = queue
     .then(() => handleMessage(msg))

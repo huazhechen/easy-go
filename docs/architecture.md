@@ -75,9 +75,8 @@ The worker protocol is defined in `src/engine/katago/types.ts`. Messages are
 plain serializable objects so they can cross the worker boundary with
 `postMessage`.
 
-Inside the worker, requests are serialized through a promise queue. Interactive
-analysis can supersede older interactive work, and background work is tracked
-separately by group.
+Inside the worker, requests are serialized through a promise queue, and an
+analyze request is aborted as stale as soon as a newer one has been posted.
 
 ## Analysis Queue
 
