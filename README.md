@@ -43,10 +43,12 @@ the small KataGo test model exists at `public/models/katago-small.bin.gz`.
 Three model tiers are hosted locally on the site and selectable from the new
 game dialog:
 
-- **B6 (6M)** — KataGo's tiny test network, loads almost instantly.
-- **B10 (10M)** — the default; a 10-block 128-channel network. If the local
-  copy is missing the app starts on B6 and silently upgrades to B10 in the
-  background.
+- **B6 (6M)** — KataGo's tiny test network, loads almost instantly; kept in
+  the local IndexedDB cache after first use.
+- **B10 (10M)** — the default; a 10-block 128-channel network. B6 and B10 are
+  both warmed into the local IndexedDB cache in the background. When B10 is
+  not cached yet the app starts on B6 immediately (降档), downloads B10 in the
+  background, and silently switches to it when ready.
 - **B18 (96M)** — the recommended b18c384nbt network. Selecting it opens a
   download dialog with a progress bar; the file is hosted as four ≤24 MiB
   chunks (compatible with Cloudflare's 25 MiB limit), fetched and concatenated

@@ -39,15 +39,17 @@ The app ships three locally-hosted model tiers under `public/models/`:
 推荐落点/持续分析刻意使用写死的超大预算（5000 访问 / 60 秒），不随档位
 或思考时间变化。
 
-The default tier is B10. When the local B10 file is unavailable the worker
-loads B6 first so play can start immediately, then fetches B10 in the
-background and silently swaps it in. B18 is ~96 MB, so the new-game dialog asks
-for confirmation, shows a streaming download progress bar, and caches the bytes
-in IndexedDB (`easy-go-model-cache`); later visits rebuild a blob URL from the
-cache and never re-download it unless the cache version changes. B18 is hosted
-as four ≤24 MiB chunks (`katago-b18.bin.gz.001`–`.004`) — compatible with
-Cloudflare's 25 MiB per-file limit — and the client fetches them in order,
-concatenates them, then normalizes and MD5-checks the result.
+The default tier is B10. B6 and B10 are both warmed into the local IndexedDB
+cache (`easy-go-model-cache`); when B10 is not in the cache yet the app starts
+on B6 immediately (优先降档), downloads B10 in the background, and silently
+swaps it in when ready. The worker also falls back to B6 when a B10 fetch
+fails for any other reason. B18 is ~96 MB, so the new-game dialog asks for
+confirmation, shows a streaming download progress bar, and caches the bytes in
+IndexedDB; later visits rebuild a blob URL from the cache and never re-download
+it unless the cache version changes. B18 is hosted as four ≤24 MiB chunks
+(`katago-b18.bin.gz.001`–`.004`) — compatible with Cloudflare's 25 MiB per-file
+limit — and the client fetches them in order, concatenates them, then
+normalizes and MD5-checks the result.
 
 Every cached or downloaded copy is verified against the tier's MD5 (of the
 decompressed `.bin` bytes) before use. Static hosts often serve `.gz` files

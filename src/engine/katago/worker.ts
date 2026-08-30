@@ -27,7 +27,7 @@ import {
   KATAGO_SMALL_MODEL_PATH,
 } from './modelDefaults';
 import {
-  modelCacheKeyForUrl,
+  cacheKeyForModelUrl,
   normalizeModelBytes,
   readValidatedCachedModel,
   writeCachedModel,
@@ -220,7 +220,7 @@ async function switchToFallbackBackendForRequest(
  * in-memory and are deliberately not written back to the cache.
  */
 async function fetchModelBytes(modelUrl: string): Promise<Uint8Array> {
-  const cacheKey = modelCacheKeyForUrl(modelUrl);
+  const cacheKey = cacheKeyForModelUrl(modelUrl);
   const expectedMd5 = expectedModelMd5(modelUrl);
   const cached = await readValidatedCachedModel(cacheKey, expectedMd5);
   if (cached) {

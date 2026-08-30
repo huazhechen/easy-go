@@ -1,4 +1,4 @@
-import { getModelTier } from './modelDefaults';
+import { getModelTier, modelTierByUrl } from './modelDefaults';
 import { publicUrl } from '../../utils/publicUrl';
 import { md5Hex } from '../../utils/md5';
 import pako from 'pako';
@@ -6,11 +6,13 @@ import pako from 'pako';
 /**
  * Local model byte cache backed by IndexedDB.
  *
- * The heavy b18 model (~96 MB) is downloaded once with an explicit progress
- * dialog and then served from this cache on every later visit, so the network
- * is only touched again when MODEL_CACHE_VERSION changes (i.e. when the model
- * files in the app are updated). The worker uses the same store for every
- * model it fetches, which also keeps the b10 model local after the first load.
+ * Every tier is stored locally in IndexedDB: b18 (~96 MB) is downloaded once
+ * with an explicit progress dialog, and b6/b10 are warmed in the background
+ * so the default B10 can fall back to B6 instantly when it is not cached yet.
+ * The store is only touched again when MODEL_CACHE_VERSION changes (i.e. when
+ * the model files in the app are updated). The worker reads and writes the
+ * same tier-scoped keys, so a cached copy is reused no matter which URL was
+ * used to fetch it.
  */
 export const MODEL_CACHE_VERSION = 2;
 
@@ -85,6 +87,16 @@ export function modelCacheKeyForTier(tierId: string): string {
   return `${MODEL_CACHE_VERSION_PREFIX}:tier:${tierId}`;
 }
 
+/**
+ * Cache key for a model URL. URLs that map to a known tier (the local file or
+ * its remote mirror) share the tier-scoped key, so b10 cached through either
+ * source is reused by the other; unknown URLs keep their own URL-scoped key.
+ */
+export function cacheKeyForModelUrl(url: string): string {
+  const tier = modelTierByUrl(url);
+  return tier ? modelCacheKeyForTier(tier.id) : modelCacheKeyForUrl(url);
+}
+
 export function isCurrentModelCacheKey(key: string): boolean {
   return key.startsWith(MODEL_CACHE_VERSION_PREFIX);
 }
@@ -134,6 +146,55 @@ export async function writeCachedModel(key: string, data: ArrayBuffer | Uint8Arr
   } catch {
     return false;
   }
+}
+
+/** True when the tier's validated model bytes are already in the local cache. */
+export async function isTierModelCached(tierId: string): Promise<boolean> {
+  const tier = getModelTier(tierId);
+  if (!tier) return false;
+  return (await readValidatedCachedModel(modelCacheKeyForTier(tier.id), tier.md5)) !== null;
+}
+
+/**
+ * Ensures a tier's model bytes are stored in the local cache, downloading them
+ * (in the background) when missing. Tries the locally-hosted file first, then
+ * the tier's remote mirror when one exists. Returns true when the tier is
+ * available locally afterwards.
+ */
+export async function ensureTierModelCached(
+  tierId: string,
+  onProgress?: (loaded: number, total: number) => void,
+  signal?: AbortSignal
+): Promise<boolean> {
+  const tier = getModelTier(tierId);
+  if (!tier) return false;
+  const key = modelCacheKeyForTier(tier.id);
+  if (await readValidatedCachedModel(key, tier.md5)) return true;
+
+  let buffer: ArrayBuffer | null = null;
+  const sources: string[] = [publicUrl(tier.localPath)];
+  if (tier.remoteUrl) sources.push(tier.remoteUrl);
+  for (const url of sources) {
+    try {
+      buffer =
+        tier.chunks && tier.chunks.length > 0
+          ? await downloadModelChunks(
+              tier.chunks.map((chunk) => ({ url: publicUrl(chunk.path), bytes: chunk.bytes })),
+              onProgress,
+              signal
+            )
+          : await downloadModelWithProgress(url, onProgress, signal, tier.decompressedBytes);
+      if (buffer) break;
+    } catch {
+      // Try the next source (local file, then the remote mirror).
+    }
+  }
+  if (!buffer) return false;
+
+  const normalized = normalizeModelBytes(new Uint8Array(buffer));
+  if (!verifyModelMd5(normalized, tier.md5)) return false;
+  await writeCachedModel(key, normalized);
+  return true;
 }
 
 async function deleteCachedModel(key: string): Promise<void> {

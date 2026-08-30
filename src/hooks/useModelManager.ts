@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import type { GameSettings } from '../types';
 import {
@@ -13,6 +13,8 @@ import {
 import {
   downloadModelChunks,
   downloadModelWithProgress,
+  ensureTierModelCached,
+  isTierModelCached,
   modelCacheKeyForTier,
   normalizeModelBytes,
   objectUrlForModelBytes,
@@ -69,6 +71,67 @@ export function useModelManager(notify: (message: string) => void) {
   const [downloadError, setDownloadError] = useState('');
   const downloadAbortRef = useRef<AbortController | null>(null);
   const b18BlobUrlRef = useRef<string | null>(null);
+  const backgroundWarmRef = useRef<Promise<void> | null>(null);
+  const b10PendingUpgradeRef = useRef(false);
+  const selectedTierRef = useRef<KataGoModelTierId>(DEFAULT_MODEL_TIER_ID);
+
+  useEffect(() => {
+    selectedTierRef.current = selectedModelTier;
+  }, [selectedModelTier]);
+
+  /**
+   * Warms b6 and b10 into the local cache in the background (b6 first — it is
+   * the tiny fallback tier). When the B10 download finishes and the user is
+   * still on the default tier, the engine URL is switched to the cached copy.
+   */
+  const warmTierModels = useCallback((): Promise<void> => {
+    if (backgroundWarmRef.current) return backgroundWarmRef.current;
+    const task = (async () => {
+      try {
+        await ensureTierModelCached('b6');
+        const pendingB10Upgrade = b10PendingUpgradeRef.current;
+        const b10Cached = await ensureTierModelCached('b10');
+        if (b10Cached && pendingB10Upgrade && selectedTierRef.current === 'b10') {
+          const tier = getModelTier('b10');
+          const state = useGameStore.getState();
+          const url = tier ? publicUrl(tier.localPath) : null;
+          if (url && state.settings.katagoModelUrl !== url) {
+            state.updateSettings({ katagoModelUrl: url });
+            notify('B10 模型已下载完成，自动切换');
+          }
+        }
+      } finally {
+        b10PendingUpgradeRef.current = false;
+        backgroundWarmRef.current = null;
+      }
+    })();
+    backgroundWarmRef.current = task;
+    return task;
+  }, [notify]);
+
+  /**
+   * Resolves the engine URL for a tier. When B10 is not cached yet it applies
+   * the downgrade policy: play starts on the tiny B6 net immediately while
+   * B10 is fetched in the background and silently swapped in when ready.
+   */
+  const resolvePlayUrl = useCallback(
+    async (tierId: KataGoModelTierId): Promise<string | null> => {
+      // Keep both light tiers stored locally in the background on every play
+      // URL resolution. The pending flag is set synchronously below, before
+      // any await, so the warm task always observes it when B10 is missing.
+      void warmTierModels();
+      if (tierId === 'b10') {
+        b10PendingUpgradeRef.current = true;
+        if (await isTierModelCached('b10')) {
+          b10PendingUpgradeRef.current = false;
+          return resolveTierModelUrl('b10');
+        }
+        return resolveTierModelUrl('b6');
+      }
+      return resolveTierModelUrl(tierId);
+    },
+    [warmTierModels]
+  );
 
   // Restore the last selected model tier. b6/b10 are served straight from the
   // site; b18 is rebuilt into a blob URL from the IndexedDB cache so the 96 MB
@@ -89,7 +152,10 @@ export function useModelManager(notify: (message: string) => void) {
           writeLocalStorage(MODEL_TIER_STORAGE_KEY, tier);
         }
       }
-      if (!url) url = await resolveTierModelUrl(tier);
+      if (!url) {
+        url = await resolvePlayUrl(tier);
+        if (!url) url = await resolveTierModelUrl(tier);
+      }
       const tierConfig = getModelTier(tier);
       setSelectedModelTier(tier);
       const state = useGameStore.getState();
@@ -100,7 +166,7 @@ export function useModelManager(notify: (message: string) => void) {
         state.updateSettings(patch);
       }
     })();
-  }, []);
+  }, [resolvePlayUrl]);
 
   useEffect(
     () => () => {
@@ -132,7 +198,7 @@ export function useModelManager(notify: (message: string) => void) {
       }
       b18BlobUrlRef.current = url;
     } else {
-      url = await resolveTierModelUrl(tierId);
+      url = await resolvePlayUrl(tierId);
     }
     if (!url) return false;
 
@@ -143,7 +209,13 @@ export function useModelManager(notify: (message: string) => void) {
     const tierDefaultThinkingMs = defaultThinkingForTier(tier);
     if (state.settings.katagoMaxTimeMs !== tierDefaultThinkingMs) patch.katagoMaxTimeMs = tierDefaultThinkingMs;
     state.updateSettings(patch);
-    notify(tier.requiresDownload ? 'B18 模型已启用' : `${tier.label} 模型已选择`);
+    notify(
+      tierId === 'b10' && b10PendingUpgradeRef.current
+        ? 'B10 模型已选择，正在后台下载，当前使用 B6'
+        : tier.requiresDownload
+          ? 'B18 模型已启用'
+          : `${tier.label} 模型已选择`
+    );
     return true;
   };
 
