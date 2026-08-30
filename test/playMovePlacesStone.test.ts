@@ -35,4 +35,30 @@ describe('GameStore playMove', () => {
     expect(state.board[3]![3]).toBeNull();
     expect(state.capturedWhite).toBe(1);
   });
+
+  it('rejects an immediate ko recapture', () => {
+    const store = useGameStore.getState();
+    store.startNewGame({ komi: 6.5, rules: 'japanese', boardSize: 9, handicap: 0 });
+
+    // Build a ko around (4,4): white's ko stone at (4,3) with its only
+    // liberty at (4,4), surrounded on the other three sides by black.
+    const setup: Array<[number, number]> = [
+      [4, 2], [4, 5], [3, 3], [3, 4], [5, 3], [5, 4], [0, 0], [4, 3],
+    ];
+    for (const [x, y] of setup) store.playMove(x, y);
+
+    // Black captures the ko stone; white's immediate recapture at (4,3) would
+    // repeat the position from two plies ago, so it must be rejected.
+    store.playMove(4, 4);
+    const before = useGameStore.getState();
+    expect(before.currentPlayer).toBe('white');
+    expect(before.board[3]![4]).toBeNull();
+    expect(before.board[4]![4]).toBe('black');
+
+    store.playMove(4, 3);
+    const after = useGameStore.getState();
+    expect(after.currentNode.id).toBe(before.currentNode.id);
+    expect(after.moveHistory).toHaveLength(setup.length + 1);
+    expect(after.board[4]![4]).toBe('black');
+  });
 });

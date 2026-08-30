@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { boardsEqual, getLiberties, checkCaptures } from '../src/utils/gameLogic';
+import { boardsEqual, checkCaptures, getLiberties, simulateMove } from '../src/utils/gameLogic';
 import { DEFAULT_BOARD_SIZE, type BoardState } from '../src/types';
 import { useGameStore } from '../src/store/gameStore';
 
@@ -52,6 +52,40 @@ describe('Game Logic', () => {
     const board = createEmptyBoard();
     const { newBoard } = checkCaptures(board, 3, 3, 'black');
     expect(newBoard[3]![3]).toBe('black');
+  });
+
+  it('simulates a legal move with captures in one pass', () => {
+    const board = createEmptyBoard();
+    board[0][0] = 'white';
+    board[1][0] = 'black';
+
+    // Black plays (x=1, y=0), capturing the white stone at (x=0, y=0).
+    const result = simulateMove(board, 1, 0, 'black');
+    expect(result.legal).toBe(true);
+    expect(result.captured).toEqual([{ x: 0, y: 0 }]);
+    expect(result.newBoard![0][0]).toBeNull();
+    expect(result.newBoard![0][1]).toBe('black');
+  });
+
+  it('rejects occupied points, suicides, and ko repetitions as illegal', () => {
+    const board = createEmptyBoard();
+    board[0][0] = 'black';
+    expect(simulateMove(board, 0, 0, 'white').legal).toBe(false);
+
+    // Black at 0,1 and 1,0 with white on every remaining neighbor makes 0,0 a
+    // suicide point for black.
+    const suicideBoard = createEmptyBoard();
+    suicideBoard[0][1] = 'black';
+    suicideBoard[1][0] = 'black';
+    suicideBoard[1][1] = 'white';
+    suicideBoard[0][2] = 'white';
+    suicideBoard[2][0] = 'white';
+    expect(simulateMove(suicideBoard, 0, 0, 'black').legal).toBe(false);
+
+    // A move whose resulting board equals previousBoard repeats the position.
+    const oneStone = createEmptyBoard();
+    oneStone[3][3] = 'black';
+    expect(simulateMove(createEmptyBoard(), 3, 3, 'black', oneStone).legal).toBe(false);
   });
 
   it('ignores invalid store play coordinates instead of throwing', () => {

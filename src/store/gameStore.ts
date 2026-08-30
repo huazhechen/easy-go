@@ -10,7 +10,7 @@ import type {
   Player,
 } from '../types';
 import { DEFAULT_BOARD_SIZE } from '../types';
-import { boardsEqual, checkCaptures, getLiberties, isValidMove } from '../utils/gameLogic';
+import { simulateMove } from '../utils/gameLogic';
 import { playStoneSound, playCaptureSound, playPassSound, playNewGameSound } from '../utils/sound';
 import { formatSgfDate } from '../utils/sgf';
 import { getKataGoEngineClient } from '../engine/katago/client';
@@ -530,17 +530,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
 
-    // Validate against the same simple-ko/no-suicide rules used by the engine
-    // presets exposed in the UI.
-    if (!isValidMove(state.board, x, y, state.currentPlayer, state.currentNode.parent?.gameState.board)) return;
-
-    const { captured, newBoard } = checkCaptures(state.board, x, y, state.currentPlayer);
-    if (captured.length === 0) {
-      const { liberties } = getLiberties(newBoard, x, y);
-      if (liberties === 0) return;
-    }
-    // Simple ko: the replayed board must not repeat the position from one move ago.
-    if (state.currentNode.parent && boardsEqual(newBoard, state.currentNode.parent.gameState.board)) return;
+    // Validate and simulate in one pass under the same simple-ko/no-suicide
+    // rules used by the engine presets exposed in the UI.
+    const simulation = simulateMove(state.board, x, y, state.currentPlayer, state.currentNode.parent?.gameState.board);
+    if (!simulation.legal) return;
+    const { captured, newBoard } = simulation;
 
     if (!isLoad) {
       if (state.settings.soundEnabled) {

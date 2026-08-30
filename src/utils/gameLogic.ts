@@ -99,31 +99,46 @@ export const checkCaptures = (board: BoardState, x: number, y: number, player: P
   return { captured, newBoard };
 };
 
-export const isValidMove = (board: BoardState, x: number, y: number, player: Player, previousBoard?: BoardState): boolean => {
-    const size = board.length;
-    // 1. Bounds
-    if (x < 0 || x >= size || y < 0 || y >= size) return false;
-
-    // 2. Occupied
-    if (board[y][x] !== null) return false;
-
-    // Simulate move
-    const tentativeBoard = board.map(row => [...row]);
-    tentativeBoard[y][x] = player;
-
-    // 3. Check Captures
-    const captured = applyCapturesInPlace(tentativeBoard, x, y, player);
-
-    // 4. Suicide Check
-    if (captured.length === 0) {
-        const { liberties } = getLiberties(tentativeBoard, x, y);
-        if (liberties === 0) return false;
+export type MoveSimulation =
+  | {
+      /** The move is legal under the app's simple-ko/no-suicide rules. */
+      legal: true;
+      /** Board after the move (stone placed and captures applied). */
+      newBoard: BoardState;
+      /** Opponent stones captured by the move. */
+      captured: { x: number; y: number }[];
     }
+  | {
+      legal: false;
+      newBoard: null;
+      captured: never[];
+    };
 
-    // 5. Ko Check (Simple Ko)
-    if (previousBoard) {
-        if (boardsEqual(tentativeBoard, previousBoard)) return false;
-    }
+/**
+ * Validates and simulates a move in one pass, returning the resulting board
+ * so callers do not need to clone the position twice.
+ */
+export const simulateMove = (
+  board: BoardState,
+  x: number,
+  y: number,
+  player: Player,
+  previousBoard?: BoardState
+): MoveSimulation => {
+  const size = board.length;
+  if (x < 0 || x >= size || y < 0 || y >= size) return { legal: false, newBoard: null, captured: [] };
+  if (board[y]![x] !== null) return { legal: false, newBoard: null, captured: [] };
 
-    return true;
+  const { captured, newBoard } = checkCaptures(board, x, y, player);
+  // Suicide: a move that captures nothing may not leave its own group without liberties.
+  if (captured.length === 0) {
+    const { liberties } = getLiberties(newBoard, x, y);
+    if (liberties === 0) return { legal: false, newBoard: null, captured: [] };
+  }
+  // Simple ko: the replayed board must not repeat the position from one move ago.
+  if (previousBoard && boardsEqual(newBoard, previousBoard)) return { legal: false, newBoard: null, captured: [] };
+  return { legal: true, newBoard, captured };
 };
+
+export const isValidMove = (board: BoardState, x: number, y: number, player: Player, previousBoard?: BoardState): boolean =>
+  simulateMove(board, x, y, player, previousBoard).legal;
