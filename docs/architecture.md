@@ -70,6 +70,8 @@ three sibling modules:
 - `init`: load a model and backend before analysis.
 - `analyze`: run MCTS and return move candidates, root values, policy, and
   ownership.
+- `quickEval`: one network forward pass with no search, used for instant
+  score judgment and for keeping the self-play win rate live with hints off.
 
 The worker protocol is defined in `src/engine/katago/types.ts`. Messages are
 plain serializable objects so they can cross the worker boundary with

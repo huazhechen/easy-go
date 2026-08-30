@@ -171,6 +171,11 @@ The store uses the engine in several ways:
 The main-thread `analysisQueue` handles cancellation, staleness, priority, and
 cache reuse before requests reach the worker.
 
+The worker also answers `quickEval` requests: a single batched network forward
+pass with no MCTS search, returning the raw win rate, score read and ownership
+map. The store uses it for instant score judgment and for the self-play win
+rate when hints are off; a newer quick eval makes an older one stale.
+
 ## AI Moves
 
 AI moves (playing against the bot or self-play) always take the search's

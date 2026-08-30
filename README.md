@@ -11,8 +11,10 @@ work off the main thread in a Web Worker, and needs no analysis server.
   or watch it play itself in self-play mode.
 - New games from 5×5 to 19×19, choosing to play Black or White and one of three
   locally-hosted model tiers, each with its own per-move thinking time.
+  Self-play always uses the bundled B10 model.
 - Live win rate, top-move recommendation hints that keep improving while you
-  play, undo, pass, and a one-tap territory score judgment.
+  play, undo, pass, and an instant territory score judgment (temporary or
+  locked-on) that renders from a cheap network-only read without a search.
 - The strongest B18 model downloads in the background with progress, is cached
   in IndexedDB, and is verified by MD5 before it is used.
 
