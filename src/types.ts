@@ -48,7 +48,6 @@ export interface CandidateMove {
   utilityLcb?: number; // utility-scale lower confidence bound, black perspective
   playSelectionValue?: number; // KataGo play selection weight, LCB adjusted
   utility?: number; // KataGo utilityAvg for this child, black perspective
-  humanPrior?: number; // human SL policy for this move, when that net is loaded
   ownership?: FloatArray; // optional per-move ownership (KaTrain includeMovesOwnership)
 }
 
@@ -70,7 +69,6 @@ export interface AnalysisResult {
   moves: CandidateMove[];
   territory: number[][]; // boardSize x boardSize grid, values -1 (white) to 1 (black)
   policy?: FloatArray; // len boardSize*boardSize + 1, illegal = -1, pass at last index
-  humanPolicy?: FloatArray; // same shape, from the human SL net (illegal = -1)
   ownershipStdev?: FloatArray; // len boardSize*boardSize
   ownershipMode?: 'none' | 'root' | 'tree';
 }
