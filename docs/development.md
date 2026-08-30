@@ -38,13 +38,12 @@ The Vite dev server sends the COOP/COEP headers required for threaded WASM.
 
 | Path | Contents |
 | --- | --- |
-| `src/components/` | React UI, modals, dashboard, board, panels, and layout controls. |
+| `src/components/` | React UI: the battle board and its dialogs. |
 | `src/store/gameStore.ts` | Global game state and actions. |
 | `src/engine/katago/` | Browser KataGo parser, TensorFlow.js model, worker, search, and board logic. |
-| `src/utils/` | SGF, storage, library, analysis helpers, PWA, shortcuts, and UI utilities. |
-| `src/data/` | Bundled SGF games. |
+| `src/utils/` | Game logic, board size, storage, sound, analysis queue, and locale helpers. |
 | `public/` | Static assets and model files. |
-| `scripts/` | Model/WASM setup and viewport checks. |
+| `scripts/` | Model and TensorFlow.js WASM setup. |
 | `test/` | Vitest unit and component tests. |
 | `docs/` | Project documentation. |
 

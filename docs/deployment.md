@@ -2,7 +2,7 @@
 
 Easy Go is a static Vite app. A production build emits `dist/`, which can be
 served by GitHub Pages or any static host that can serve JavaScript, WASM,
-compressed model files, and the service worker.
+and compressed model files.
 
 ## Build
 
@@ -83,36 +83,21 @@ Hosts such as Netlify and Cloudflare Pages can honor that file. GitHub Pages
 does not support custom response headers, so WASM runs single-threaded there.
 The app still works, and WebGPU is unaffected by this limitation.
 
-## Service Worker and Offline Cache
+## Offline Caching
 
-The production app registers `sw.js` after page load. Development builds do not
-register the service worker.
-
-The service worker precaches:
-
-- The app shell.
-- Manifest and PWA icons/screenshots.
-- The locally-hosted model tiers (`katago-small.bin.gz`, `katago-b10.bin.gz`,
-  and the four `katago-b18.bin.gz.001`–`.004` chunks).
-- TensorFlow.js WASM files.
-- Built-in board and stone assets.
-
-Navigation requests fall back to the cached app shell when offline. Static
-assets are cache-first. Other same-origin GET requests are cached at runtime.
+The app has no service worker. Browsers may cache the app shell normally, and
+downloaded B18 model bytes are cached in IndexedDB (see Models and Performance
+in the README), but there is no explicit offline cache.
 
 ## Updates
 
 The build emits `version.json` with package version, git hash, commit date, and
-build date. Production clients poll that file periodically and on window focus.
-When a new git hash is detected, the app can show an update-ready banner.
-
-The service worker also listens for `SKIP_WAITING`, allowing the UI to activate
-a waiting worker and reload.
+build date.
 
 ## Static Host Checklist
 
-- Serve `index.html`, `404.html`, `manifest.webmanifest`, `sw.js`, model files,
-  WASM files, and generated JS/CSS from the same origin.
+- Serve `index.html`, `404.html`, model files, WASM files, and generated JS/CSS
+  from the same origin.
 - The b18 model is hosted as four ≤24 MiB chunks
   (`katago-b18.bin.gz.001`–`.004`), so hosts with a 25 MiB per-file limit
   (Cloudflare Workers/Pages) can serve it; the client concatenates and

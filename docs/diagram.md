@@ -67,12 +67,5 @@ sequenceDiagram
 ```mermaid
 flowchart LR
   Store["gameStore"] --> Settings["localStorage settings"]
-  Store --> AutoSave["localStorage auto-save"]
-  Store --> Library["IndexedDB easy-go-library"]
-  Store --> ModelUpload["IndexedDB easy-go-models"]
-  ServiceWorker["sw.js"] --> Cache["Cache Storage"]
-  Cache --> Shell["App shell"]
-  Cache --> Model["Small model"]
-  Cache --> Wasm["TFJS WASM"]
-  Cache --> Assets["Board and PWA assets"]
+  Store --> ModelCache["IndexedDB model cache"]
 ```
