@@ -30,7 +30,7 @@ Tauri v2 (Rust) desktop apps for Windows/macOS/Linux, PWA web app. KataGo infere
 ONNX Runtime with selectable backends (Native GPU/CPU, PyTorch GPU on desktop; WebGPU,
 WebNN, WASM in browser). Board recognition from photos via its own trained "Moku" model
 (RT-DETR + classical CV). 9×9/13×13/19×19, visual game tree with minimap, SGF
-import/export incl. OGS URL, library with folders + ZIP, six board themes, 8 fully
+import/export incl. OGS URL, library with folders + ZIP, 8 fully
 translated languages, customizable shortcuts, gamepad support, performance report,
 problem mode, Monte Carlo score estimation, pattern matching with Sensei's Library links.
 
@@ -63,7 +63,7 @@ analysis pages, printable PDFs.
 | 9 | **In-app About/version/update surface** | About dialog with build date/commit, "Report an Issue" GitHub link, in-app bug report. | Tiny. |
 
 Parity notes (things Kaya has that we already match): library folders + ZIP import/export,
-customizable keyboard shortcuts, gamepad support, sounds, PWA/offline, six board themes +
+customizable keyboard shortcuts, gamepad support, sounds, PWA/offline +
 dark mode, ownership heatmap + top moves + win-rate/score graphs, full-game analysis with
 per-phase performance report (accuracy, best-move %, key mistakes), Monte Carlo dead-stone
 estimation, OGS URL import, drag-and-drop SGF, edit/setup mode with markers, auto-save.
