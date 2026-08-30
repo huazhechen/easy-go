@@ -54,13 +54,15 @@ Analysis results are attached to game-tree nodes so the current position keeps
 its cached numbers when navigating back and forward.
 
 The store file stays focused on the store definition. Supporting logic lives in
-three sibling modules:
+sibling modules:
 
 - `src/store/settings.ts` — settings defaults, persistence, and migration.
 - `src/store/gameTree.ts` — game-node construction, position keys, and SGF
   root-property helpers.
 - `src/store/analysis.ts` — continuous-search scheduling, queue priorities,
   and AI-request epoch invalidation.
+- `src/store/analysisActions.ts` — analysis-mode toggles, the continuous-search
+  loop, MCTS analysis requests, and network-only quick evaluation.
 - `src/store/aiPlayer.ts` — AI turn orchestration: thinking delay, waiting for
   candidate moves, playing the top move or passing, and scheduling.
 
