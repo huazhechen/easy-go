@@ -22,7 +22,7 @@ developer workflow.
 | --- | --- |
 | App shell | `src/App.tsx`, `src/main.tsx`, `src/components/BattleApp.tsx` |
 | UI components | `src/components/` (match card, board grid, actions, dialogs, toasts) |
-| UI hooks | `src/hooks/` (model manager, hint modes, score judgment, win-rate display) |
+| UI hooks | `src/hooks/` (model manager + B18 download, tri-state hint/score toggles, score judgment, win-rate display) |
 | Global state | `src/store/gameStore.ts` plus `src/store/settings.ts`, `src/store/gameTree.ts`, `src/store/analysis.ts` |
 | Engine client and worker | `src/engine/katago/client.ts`, `src/engine/katago/worker.ts` |
 | MCTS and board engine | `src/engine/katago/analyzeMcts.ts`, `src/engine/katago/fastBoard.ts` |
