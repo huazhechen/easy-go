@@ -89,7 +89,7 @@ export function isCurrentModelCacheKey(key: string): boolean {
   return key.startsWith(MODEL_CACHE_VERSION_PREFIX);
 }
 
-export async function readCachedModel(key: string): Promise<ArrayBuffer | null> {
+async function readCachedModel(key: string): Promise<ArrayBuffer | null> {
   const db = await openModelCache();
   if (!db) return null;
   try {
@@ -136,7 +136,7 @@ export async function writeCachedModel(key: string, data: ArrayBuffer | Uint8Arr
   }
 }
 
-export async function deleteCachedModel(key: string): Promise<void> {
+async function deleteCachedModel(key: string): Promise<void> {
   const db = await openModelCache();
   if (!db) return;
   try {

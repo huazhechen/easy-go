@@ -143,6 +143,15 @@ export const getModelTier = (id: string | null | undefined): KataGoModelTier | n
 export const isKnownModelTierId = (id: unknown): id is KataGoModelTierId =>
   id === 'b6' || id === 'b10' || id === 'b18';
 
+export const defaultThinkingForTier = (tier: KataGoModelTier | null | undefined): number =>
+  tier?.defaultThinkingMs ?? 2000;
+
+/** Snaps to the tier's slider step and clamps to its range. */
+export const clampThinkingMs = (ms: number, tier: KataGoModelTier): number => {
+  const stepped = Math.round(ms / tier.thinkingStepMs) * tier.thinkingStepMs;
+  return Math.min(tier.maxThinkingMs, Math.max(tier.minThinkingMs, stepped));
+};
+
 export const modelTierByUrl = (url: string): KataGoModelTier | null => {
   const trimmed = url.trim();
   for (const tier of KATAGO_MODEL_TIERS) {

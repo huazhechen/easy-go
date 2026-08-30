@@ -91,11 +91,6 @@ export interface GameSettings {
   defaultBoardSize: BoardSize;
   defaultHandicap: number;
   gameRules: GameRules; // KataGo rules preset (KaTrain default: japanese)
-  analysisShowChildren: boolean; // Q
-  analysisShowEval: boolean; // W
-  analysisShowHints: boolean; // E
-  analysisShowPolicy: boolean; // R
-  analysisShowOwnership: boolean; // T
   katagoModelUrl: string;
   katagoBackend: KataGoBackendPreference;
   katagoVisits: number;

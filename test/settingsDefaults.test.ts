@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_KATAGO_VISITS, useGameStore } from '../src/store/gameStore';
+import { useGameStore } from '../src/store/gameStore';
+import { DEFAULT_KATAGO_VISITS } from '../src/store/settings';
 
 describe('settings defaults', () => {
   it('defaults full-strength KataGo visits to 5000', () => {
