@@ -499,6 +499,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return {
         settings: nextSettings,
         analysisData: null,
+        quickEvalData: null,
         engineStatus: 'idle',
         engineError: null,
         engineBackend: null,
@@ -695,6 +696,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       isAiPlaying: false,
       isAiThinking: false,
       aiColor: null,
+      quickEvalData: null,
       engineStatus: state.engineStatus,
       engineError: state.engineError,
 
