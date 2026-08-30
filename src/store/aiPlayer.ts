@@ -1,7 +1,9 @@
 import type { GameNode, GameSettings, Player } from '../types';
 import { ENGINE_MAX_TIME_MS } from '../engine/katago/limits';
+import { getAnimationNow } from '../utils/animationFrame';
 import { analysisQueue } from '../utils/analysisQueue';
-import { getAiRequestEpoch, sleep } from './analysis';
+import { continuousEarlyStopByNodeId, getAiRequestEpoch, sleep } from './analysis';
+import { checkMctsEarlyStop, createMctsEarlyStopState } from './mctsEarlyStop';
 
 /** The slice of the game store the AI player reads and drives. */
 export interface AiPlayerStore {
@@ -58,9 +60,10 @@ export function scheduleAiMove(getStore: () => AiPlayerStore, delayMs: number): 
 }
 
 /**
- * Runs the AI turn: thinks for the configured time, waits for the search to
- * produce candidate moves, then plays the top-ranked one (or passes when the
- * search recommends a pass).
+ * Runs the AI turn: waits for the search to produce candidate moves and plays
+ * the top-ranked one (or passes when the search recommends a pass). Simple
+ * positions can finish before the configured time budget when the search is
+ * confident; the budget stays a hard ceiling.
  */
 export function runAiMove(
   getStore: () => AiPlayerStore,
@@ -74,25 +77,37 @@ export function runAiMove(
   const playerAtStart = initial.currentPlayer;
   const epoch = getAiRequestEpoch();
   const thinkingMs = Math.max(25, Math.min(initial.settings.katagoMaxTimeMs, ENGINE_MAX_TIME_MS));
+  // The AI turn may keep deepening even when the hint search settled this node.
+  continuousEarlyStopByNodeId.delete(nodeId);
   setStore({ isAiThinking: true, isAnalysisMode: true });
   if (!initial.isContinuousAnalysis) getStore().toggleContinuousAnalysis();
   void (async () => {
-    await sleep(thinkingMs);
+    const startedAt = getAnimationNow();
+    let stopState = createMctsEarlyStopState();
     while (true) {
       const latest = getStore();
       if (getAiRequestEpoch() !== epoch || latest.currentNode.id !== nodeId || latest.currentPlayer !== playerAtStart) return;
       if (!force && (!latest.isAiPlaying || latest.aiColor !== playerAtStart)) return;
-      if (latest.currentNode.analysis?.moves?.length) break;
+      const analysis = latest.currentNode.analysis;
+      if (analysis?.moves?.length) {
+        const check = checkMctsEarlyStop(stopState, analysis);
+        stopState = check.nextState;
+        if (check.shouldStop && check.best) {
+          setStore({ isAiThinking: false });
+          if (check.best.x < 0 || check.best.y < 0) latest.passTurn();
+          else latest.playMove(check.best.x, check.best.y);
+          return;
+        }
+        if (getAnimationNow() - startedAt >= thinkingMs) {
+          const best = analysis.moves[0]!;
+          setStore({ isAiThinking: false });
+          if (best.x < 0 || best.y < 0) latest.passTurn();
+          else latest.playMove(best.x, best.y);
+          return;
+        }
+      }
       await sleep(25);
     }
-    const latest = getStore();
-    if (getAiRequestEpoch() !== epoch || latest.currentNode.id !== nodeId || latest.currentPlayer !== playerAtStart) return;
-    if (!force && (!latest.isAiPlaying || latest.aiColor !== playerAtStart)) return;
-    const best = latest.currentNode.analysis?.moves?.[0];
-    if (!best) return;
-    setStore({ isAiThinking: false });
-    if (best.x < 0 || best.y < 0) latest.passTurn();
-    else latest.playMove(best.x, best.y);
   })().catch(() => {
     if (getAiRequestEpoch() === epoch) setStore({ isAiThinking: false });
   });

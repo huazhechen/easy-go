@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { countTerritoryPoints, formatScoreResult, type ScoreResult } from '../utils/territoryScore';
-import { useTriStateMode } from './useTriStateMode';
+import { useToggleMode } from './useToggleMode';
 
 /**
  * Score judgment renders whatever the store's cheap network-only read already
  * holds for the current position; the button only toggles the mode/rendering
- * and never starts a search, so there is no loading overlay. Peek expires on
- * the next stone; locked keeps rendering and follows every new ownership read.
+ * and never starts a search, so there is no loading overlay. "always" keeps
+ * rendering and follows every new ownership read.
  */
 export function useScoreJudgment() {
   const positionKey = useGameStore((state) => state.currentNode.id);
@@ -20,10 +20,8 @@ export function useScoreJudgment() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-  const { mode: scoreMode, cycle, keyChanged } = useTriStateMode({
+  const { mode: scoreMode, cycle, keyChanged } = useToggleMode({
     key: `${positionKey}|${currentPlayer}`,
-    // Any position change invalidates an older judgment.
-    expirePeekOn: () => true,
   });
   if (keyChanged) {
     setDialogOpen(false);
@@ -35,6 +33,14 @@ export function useScoreJudgment() {
   const result: ScoreResult | null = current
     ? formatScoreResult(countTerritoryPoints(current.territory, capturedBlack, capturedWhite, komi))
     : null;
+
+  // The score toast auto-dismisses after one second; a position change (or
+  // re-toggling the judgment) pops it up again for another second.
+  useEffect(() => {
+    if (!visible) return;
+    const timer = window.setTimeout(() => setDismissed(true), 1000);
+    return () => window.clearTimeout(timer);
+  }, [visible]);
 
   // Make sure the current position has a network-only read to render. This is
   // a silent fetch; it never runs a search and never shows a loading overlay.

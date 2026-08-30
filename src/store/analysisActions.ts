@@ -12,6 +12,7 @@ import {
   CONTINUOUS_INNER_MAX_TIME_MS,
   CONTINUOUS_MAX_VISITS,
   CONTINUOUS_POSITION_MAX_TIME_MS,
+  continuousEarlyStopByNodeId,
   continuousSearchMsByNodeId,
   invalidateContinuousAnalysis,
   isAnalysisCanceled,
@@ -21,6 +22,7 @@ import {
   sleep,
   type AnalysisRequestOptions,
 } from './analysis';
+import { checkMctsEarlyStop, createMctsEarlyStopState } from './mctsEarlyStop';
 import {
   createEmptyTerritory,
   getBoardSizeFromBoard,
@@ -50,6 +52,8 @@ export interface AnalysisStore {
   engineError: string | null;
   engineBackend: string | null;
   treeVersion: number;
+  /** Node id whose recommendation search has settled (early-stopped). */
+  recommendationSettledNodeId: string | null;
   runAnalysis: (opts?: AnalysisRequestOptions) => Promise<void>;
 }
 
@@ -90,7 +94,11 @@ export function toggleContinuousAnalysis(get: AnalysisGetter, set: AnalysisSette
       const node = state.currentNode;
       const currentVisits = nodeAnalysisVisitCount(node);
       const elapsedMs = continuousSearchMsByNodeId.get(node.id) ?? 0;
-      if (currentVisits >= CONTINUOUS_MAX_VISITS || elapsedMs >= CONTINUOUS_POSITION_MAX_TIME_MS) {
+      if (
+        continuousEarlyStopByNodeId.get(node.id)?.settled === true ||
+        currentVisits >= CONTINUOUS_MAX_VISITS ||
+        elapsedMs >= CONTINUOUS_POSITION_MAX_TIME_MS
+      ) {
         await sleep(500);
         continue;
       }
@@ -121,6 +129,17 @@ export function toggleContinuousAnalysis(get: AnalysisGetter, set: AnalysisSette
         const spentMs = Math.min(CONTINUOUS_INNER_MAX_TIME_MS, Math.max(0, Date.now() - startedAt));
         continuousSearchMsByNodeId.set(node.id, elapsedMs + spentMs);
       }
+
+      // Once the recommendation has settled, stop deepening this node so the
+      // steady-state hint search goes quiet instead of burning CPU up to the
+      // visit/time ceilings.
+      if (node.analysis?.moves?.length) {
+        const prevState = continuousEarlyStopByNodeId.get(node.id) ?? createMctsEarlyStopState();
+        const check = checkMctsEarlyStop(prevState, node.analysis);
+        continuousEarlyStopByNodeId.set(node.id, check.nextState);
+      }
+      const settled = continuousEarlyStopByNodeId.get(node.id)?.settled === true;
+      set({ recommendationSettledNodeId: settled ? node.id : null });
     }
   })();
 }
@@ -309,7 +328,7 @@ export async function runEngineAnalysis(
                 onProgress(analysis);
               }
             : undefined,
-        }),
+      }),
     })
     .then((analysis) => {
       applyAnalysis(analysis, true);

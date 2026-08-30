@@ -24,7 +24,6 @@ import {
   applyHandicapStones,
   createNode,
   createRootNodeId,
-  initialGameState,
   initialRoot,
   isPassMove,
   nodeToState,
@@ -35,6 +34,7 @@ import { toggleAnalysisMode, toggleContinuousAnalysis, runEngineAnalysis, runEng
 import { initialSettings, rulesToSgfRu, saveStoredSettings } from './settings';
 import { analysisQueue } from '../utils/analysisQueue';
 import { rememberActiveBranchPath, type ActiveBranchMap } from '../utils/branchNavigation';
+import { loadStoredGame, saveStoredGame } from './gamePersistence';
 
 interface GameStore extends GameState {
   // Tree State
@@ -57,6 +57,13 @@ interface GameStore extends GameState {
   engineBackend: string | null;
   /** True while an AI move request is in flight, so the UI can say so. */
   isAiThinking: boolean;
+  /**
+   * Node id whose recommendation search has settled (early-stopped). Null when
+   * the current position is still being searched or no search is running.
+   */
+  recommendationSettledNodeId: string | null;
+  /** True when the initial state was hydrated from a saved local game. */
+  restoredFromStorage: boolean;
 
   // Actions
   toggleAi: (color: Player) => void;
@@ -81,23 +88,26 @@ const clearAnalysisTree = (node: GameNode): void => {
   for (const child of node.children) clearAnalysisTree(child);
 };
 
+const restoredGame = loadStoredGame();
+const restoredNode = restoredGame?.currentNode ?? initialRoot;
+
 export const useGameStore = create<GameStore>((set, get) => ({
   // Flat properties (mirrored from currentNode.gameState for easy access)
-  board: initialGameState.board,
-  currentPlayer: initialGameState.currentPlayer,
-  moveHistory: initialGameState.moveHistory,
-  capturedBlack: initialGameState.capturedBlack,
-  capturedWhite: initialGameState.capturedWhite,
-  komi: initialGameState.komi,
+  board: restoredNode.gameState.board,
+  currentPlayer: restoredNode.gameState.currentPlayer,
+  moveHistory: restoredNode.gameState.moveHistory,
+  capturedBlack: restoredNode.gameState.capturedBlack,
+  capturedWhite: restoredNode.gameState.capturedWhite,
+  komi: restoredNode.gameState.komi,
 
   // Tree State
-  rootNode: initialRoot,
-  currentNode: initialRoot,
+  rootNode: restoredGame?.rootNode ?? initialRoot,
+  currentNode: restoredNode,
   treeVersion: 0,
-  activeBranchChildIds: {},
+  activeBranchChildIds: restoredGame?.activeBranchChildIds ?? {},
 
-  isAiPlaying: false,
-  aiColor: null,
+  isAiPlaying: restoredGame?.isAiPlaying ?? false,
+  aiColor: restoredGame?.aiColor ?? null,
   isAnalysisMode: false,
   isContinuousAnalysis: false,
   analysisData: null,
@@ -107,6 +117,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   engineError: null,
   engineBackend: null,
   isAiThinking: false,
+  recommendationSettledNodeId: null,
+  restoredFromStorage: restoredGame != null,
 
   toggleAi: (color) => toggleAiPlayer(get, set, color),
 
@@ -322,6 +334,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     set({
       settings: nextSettings,
+      rootNode: newRoot,
       ...nodeToState(newRoot),
       komi: rootState.komi,
       isAiPlaying: false,
@@ -381,3 +394,26 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
   },
 }));
+
+// Persist the game tree (and AI-player state) whenever the visible position
+// changes: moves, passes, navigation, undo, new games, and AI toggles.
+// Analysis-progress updates and settings changes don't touch those fields, so
+// the shallow identity check keeps the subscription quiet during searches.
+useGameStore.subscribe((state, prevState) => {
+  if (
+    state.rootNode === prevState.rootNode &&
+    state.currentNode === prevState.currentNode &&
+    state.activeBranchChildIds === prevState.activeBranchChildIds &&
+    state.isAiPlaying === prevState.isAiPlaying &&
+    state.aiColor === prevState.aiColor
+  ) {
+    return;
+  }
+  saveStoredGame({
+    rootNode: state.rootNode,
+    currentNode: state.currentNode,
+    activeBranchChildIds: state.activeBranchChildIds,
+    isAiPlaying: state.isAiPlaying,
+    aiColor: state.aiColor,
+  });
+});

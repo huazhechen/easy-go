@@ -3,7 +3,7 @@ import type { BoardState, CandidateMove, Move, Player } from '../types';
 import { isValidMove } from '../utils/gameLogic';
 import { columnLabel, getBoardGeometry, linePosition, pointPosition } from '../utils/boardGeometry';
 import { percent } from '../utils/format';
-import type { TriStateMode } from '../hooks/useTriStateMode';
+import type { ToggleMode } from '../hooks/useToggleMode';
 
 interface BoardGridProps {
   board: BoardState;
@@ -12,7 +12,9 @@ interface BoardGridProps {
   previousBoard: BoardState | undefined;
   /** Top recommendation moves (already trimmed to the desired rank count). */
   hints: CandidateMove[];
-  hintMode: TriStateMode;
+  hintMode: ToggleMode;
+  /** True while the recommendation MCTS search is actively running. */
+  hintsSearching: boolean;
   showTerritory: boolean;
   territory: number[][];
   /** True while the AI is thinking (scanline shows and clicks are ignored). */
@@ -33,6 +35,7 @@ export function BoardGrid({
   previousBoard,
   hints,
   hintMode,
+  hintsSearching,
   showTerritory,
   territory,
   thinkingActive,
@@ -143,7 +146,7 @@ export function BoardGrid({
             aria-label={`${x + 1},${y + 1}`}
           >
             {hint && !stone && (
-              <span className={`hint-dot rank-${hints.findIndex((move) => move === hint)}`} style={{ backgroundColor: `rgba(211,47,47,${hintAlpha.toFixed(3)})` }}>{percent(hintSideWinRate)}</span>
+              <span className={`hint-dot rank-${hints.findIndex((move) => move === hint)}${hintsSearching ? ' searching' : ''}`} style={{ backgroundColor: `rgba(211,47,47,${hintAlpha.toFixed(3)})` }}>{percent(hintSideWinRate)}</span>
             )}
             {stone && <span className={`board-stone ${stone === 'black' ? 'black-stone' : 'white-stone'}`} />}
             {currentMove?.x === x && currentMove?.y === y && <span className="last-move-marker" />}

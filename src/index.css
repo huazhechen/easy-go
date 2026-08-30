@@ -33,9 +33,7 @@
 .new-game-header { display:inline-flex; align-items:center; gap:6px; height:36px; padding:0 11px; border:1px solid #dfe7e1; border-radius:9px; background:#fff; color:#5c6d64; font-size:12px; font-weight:650; }
 .battle-actions { grid-template-columns:repeat(4, minmax(0, 1fr)); }
 .battle-actions .recommendation-toggle.active { background:#123f70; border-color:#123f70; color:#fff; box-shadow:0 2px 8px #123f7038; }
-.battle-actions .recommendation-toggle.peek { background:#123f70; border-color:#123f70; color:#fff; box-shadow:0 2px 8px #123f7038; }
-.battle-actions .recommendation-toggle.active .thinking-spinner,
-.battle-actions .recommendation-toggle.peek .thinking-spinner { border-color:#6e8eaf; border-top-color:#fff; }
+.battle-actions .recommendation-toggle.active .thinking-spinner { border-color:#6e8eaf; border-top-color:#fff; }
 .battle-actions .score-toggle.active { background:#123f70; border-color:#123f70; color:#fff; }
 .score-toast { display:flex; align-items:center; gap:12px; cursor:pointer; white-space:nowrap; }.score-toast-points { display:flex; flex-direction:column; align-items:flex-start; gap:2px; line-height:1.2; }.score-toast-divider { width:1px; height:28px; background:#71807966; flex:none; }.score-toast-leader { white-space:nowrap; }
 .score-legend { display:flex; justify-content:center; gap:15px; color:#65756c; font-size:12px; margin:-6px 0 16px; }.score-legend span { display:flex; align-items:center; gap:5px; }.score-legend i { width:10px; height:10px; border-radius:2px; display:inline-block; }.score-legend i.black { background:#123f70; }.score-legend i.white { background:#f3f5f6; border:1px solid #7e8b93; }
@@ -70,7 +68,7 @@
   grid-template-columns: 27px minmax(0, 1fr) auto minmax(0, 1fr) 27px !important;
   align-items: center !important;
   gap: 8px !important;
-  min-height: 72px !important;
+  min-height: 78px !important;
   padding: 9px 12px 0 !important;
   background: #fff !important;
   border: 1px solid #e4ebe6 !important;
@@ -93,9 +91,9 @@
   transform: translateY(-50%) !important;
 }
 .match-card > :nth-child(1) { left: 12px !important; grid-column: 1; justify-self: start; }
-.match-card > :nth-child(2) { grid-column: 2; position: static !important; width: auto !important; transform: none !important; text-align: left; padding-left: 12px; min-width: 0; overflow: hidden; }
+.match-card > :nth-child(2) { grid-column: 2; position: static !important; width: auto !important; transform: none !important; text-align: left; padding-left: 12px; min-width: 0; }
 .match-card > :nth-child(3) { grid-column: 3; }
-.match-card > :nth-child(4) { grid-column: 4; position: static !important; width: auto !important; transform: none !important; text-align: right; justify-content: flex-end; padding-right: 12px; min-width: 0; overflow: hidden; }
+.match-card > :nth-child(4) { grid-column: 4; position: static !important; width: auto !important; transform: none !important; text-align: right; justify-content: flex-end; padding-right: 12px; min-width: 0; }
 .match-card .match-side strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .match-card > :nth-child(5) { right: 12px !important; grid-column: 5; justify-self: end; }
 .match-score {
@@ -207,7 +205,7 @@
 .match-card > :not(.match-rate-track) { position: relative; z-index: 2; }
 .match-card .match-side strong,
 .match-card .match-rate-black,
-.match-card .match-rate-white { color: #000 !important; }
+.match-card .match-rate-white { color: #000; }
 .match-card > .stone-avatar.black-stone,
 .match-card > .stone-avatar.white-stone { box-shadow: none !important; border: 0 !important; }
 .match-card > .stone-avatar.black-stone { border: 0 !important; }
@@ -221,43 +219,35 @@
   background: #dfad68 !important;
 }
 .battle-shell .score-toggle.active,
-.battle-shell .recommendation-toggle.active,
-.battle-shell .recommendation-toggle.peek {
+.battle-shell .recommendation-toggle.active {
   border-color: transparent !important;
   color: #fff !important;
   box-shadow: 0 2px 6px rgba(70,45,20,.28) !important;
 }
 .battle-shell .score-toggle.active,
-.battle-shell .score-toggle.peek,
 .battle-shell .recommendation-toggle.active,
-.battle-shell .recommendation-toggle.peek,
 .battle-shell .dialog-options button.selected {
   background: #5a2f0f !important;
   border-color: #3f2009 !important;
   color: #fff !important;
 }
-.battle-shell .recommendation-label.flashing {
-  animation: recommendation-peek-flash 1.2s ease-in-out infinite alternate;
+.battle-shell .recommendation-label.searching-flash,
+.match-side .thinking-flash {
+  animation: search-flash 1.2s ease-in-out infinite alternate;
 }
-.battle-shell .score-label.flashing {
-  animation: recommendation-peek-flash 1.2s ease-in-out infinite alternate;
+.hint-dot.searching {
+  animation: search-flash 1.2s ease-in-out infinite alternate;
 }
-@keyframes recommendation-peek-flash {
+@keyframes search-flash {
   from { color: #000; }
   to { color: #fff; }
 }
 .battle-shell button.score-toggle.active:hover,
 .battle-shell button.score-toggle.active:focus,
 .battle-shell button.score-toggle.active:focus-visible,
-.battle-shell button.score-toggle.peek:hover,
-.battle-shell button.score-toggle.peek:focus,
-.battle-shell button.score-toggle.peek:focus-visible,
 .battle-shell button.recommendation-toggle.active:hover,
 .battle-shell button.recommendation-toggle.active:focus,
 .battle-shell button.recommendation-toggle.active:focus-visible,
-.battle-shell button.recommendation-toggle.peek:hover,
-.battle-shell button.recommendation-toggle.peek:focus,
-.battle-shell button.recommendation-toggle.peek:focus-visible,
 .battle-shell .dialog-options button.selected:hover,
 .battle-shell .dialog-options button.selected:focus,
 .battle-shell .dialog-options button.selected:focus-visible {

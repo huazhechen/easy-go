@@ -89,6 +89,10 @@ npm run build
 Browser state can affect manual testing. Useful storage locations:
 
 - Settings: versioned `easy-go:settings:*` localStorage keys.
+- Current game (game tree, active branch, and AI-player state): `easy-go:game:v1`.
+  The tree is written on every position change and restored on page load so a
+  refresh continues the same game. Engine analysis results are not stored.
+- New-game dialog choices (board size, side, self-play): `easy-go:opening:v1`.
 - Downloaded model cache (b18 and worker-fetched models): IndexedDB
   `easy-go-model-cache`. Keys include a version number; bumping
   `MODEL_CACHE_VERSION` in `src/engine/katago/modelCache.ts` invalidates it

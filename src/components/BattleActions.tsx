@@ -1,13 +1,15 @@
 import { FaCalculator, FaFlag, FaLightbulb, FaUndo } from 'react-icons/fa';
-import type { TriStateMode } from '../hooks/useTriStateMode';
+import type { ToggleMode } from '../hooks/useToggleMode';
 
 interface BattleActionsProps {
   canUndo: boolean;
   disabled: boolean;
   lastMoveWasPass: boolean;
-  hintMode: TriStateMode;
-  scoreMode: TriStateMode;
+  hintMode: ToggleMode;
+  scoreMode: ToggleMode;
   recommendationLabel: string;
+  /** True while the recommendation MCTS search is actively running. */
+  recommendationSearching: boolean;
   showThinkingSpinner: boolean;
   onUndo: () => void;
   onPass: () => void;
@@ -22,16 +24,17 @@ export function BattleActions({
   hintMode,
   scoreMode,
   recommendationLabel,
+  recommendationSearching,
   showThinkingSpinner,
   onUndo,
   onPass,
   onCycleScore,
   onCycleHints,
 }: BattleActionsProps) {
-  const hintToggleClass = hintMode === 'always' ? ' active' : hintMode === 'peek' ? ' peek' : '';
-  const hintLabel = hintMode === 'off' ? '不显示' : hintMode === 'peek' ? '仅本手' : '持续显示';
-  const scoreToggleClass = scoreMode === 'always' ? ' active' : scoreMode === 'peek' ? ' peek' : '';
-  const scoreLabel = scoreMode === 'off' ? '不显示' : scoreMode === 'peek' ? '临时开启' : '锁定开启';
+  const hintToggleClass = hintMode === 'always' ? ' active' : '';
+  const hintLabel = hintMode === 'off' ? '关闭' : '永久';
+  const scoreToggleClass = scoreMode === 'always' ? ' active' : '';
+  const scoreLabel = scoreMode === 'off' ? '关闭' : '永久';
   return (
     <div className="battle-actions">
       <button type="button" onClick={onUndo} disabled={!canUndo}><FaUndo />悔棋</button>
@@ -45,7 +48,7 @@ export function BattleActions({
         aria-label={`局势判定：${scoreLabel}`}
       >
         <FaCalculator />
-        <span className={scoreMode === 'peek' ? 'score-label flashing' : 'score-label'}>局势判定</span>
+        <span className="score-label">局势判定</span>
       </button>
       <button
         type="button"
@@ -56,7 +59,7 @@ export function BattleActions({
         disabled={disabled}
       >
         <FaLightbulb />
-        <span className={hintMode === 'peek' ? 'recommendation-label flashing' : 'recommendation-label'}>{recommendationLabel}</span>
+        <span className={hintMode !== 'off' && recommendationSearching ? 'recommendation-label searching-flash' : 'recommendation-label'}>{recommendationLabel}</span>
         {showThinkingSpinner && <span className="thinking-spinner" aria-label="推荐落点计算中" />}
       </button>
     </div>

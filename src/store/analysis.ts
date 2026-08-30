@@ -3,11 +3,13 @@ import type { KataGoAnalysisPayload } from '../engine/katago/types';
 import { ENGINE_MAX_TIME_MS, ENGINE_MAX_VISITS } from '../engine/katago/limits';
 import type { AnalysisResult, GameSettings } from '../types';
 import { isAnalysisQueueCanceledError, isAnalysisQueueStaleError, analysisQueue } from '../utils/analysisQueue';
+import type { MctsEarlyStopState } from './mctsEarlyStop';
 
 let continuousToken = 0;
 /** Stops the current continuous-search loop; the next toggle starts a fresh one. */
 export const invalidateContinuousAnalysis = (): void => {
   continuousToken++;
+  continuousEarlyStopByNodeId.clear();
 };
 /** Starts a new continuous-search generation and returns its token. */
 export const beginContinuousAnalysis = (): number => ++continuousToken;
@@ -18,6 +20,12 @@ export const CONTINUOUS_MAX_VISITS = 16_384;
 export const CONTINUOUS_INNER_MAX_TIME_MS = 1_000;
 export const CONTINUOUS_POSITION_MAX_TIME_MS = 5 * 60_000;
 export const continuousSearchMsByNodeId = new Map<string, number>();
+/**
+ * Nodes whose recommendation has settled: the continuous loop stops deepening
+ * them until the position changes, the analysis restarts, or an AI turn
+ * requests the node again.
+ */
+export const continuousEarlyStopByNodeId = new Map<string, MctsEarlyStopState>();
 
 export const nextContinuousAnalysisVisits = (currentVisits: number): number => {
   if (currentVisits < 1) return CONTINUOUS_INITIAL_VISITS;

@@ -31,3 +31,14 @@ export function writeLocalStorage(key: string, value: string): boolean {
     return false;
   }
 }
+
+export function removeLocalStorage(key: string): boolean {
+  try {
+    const storage = getLocalStorage();
+    if (!storage) return false;
+    storage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}

@@ -48,7 +48,8 @@ call actions from `useGameStore`.
 - Modes such as analysis, continuous analysis, and AI play.
 - Settings, including model URL, TensorFlow.js backend preference, visits,
   thinking time, board size, rules, and hint visibility.
-- Persistence for settings and uploaded model state.
+- Persistence for settings, the current game tree, opening settings, and
+  uploaded model state.
 
 Analysis results are attached to game-tree nodes so the current position keeps
 its cached numbers when navigating back and forward.
@@ -59,6 +60,8 @@ sibling modules:
 - `src/store/settings.ts` — settings defaults, persistence, and migration.
 - `src/store/gameTree.ts` — game-node construction, position keys, and SGF
   root-property helpers.
+- `src/store/gamePersistence.ts` — game-tree and opening-settings
+  serialization, validation, and storage keys.
 - `src/store/analysis.ts` — continuous-search scheduling, queue priorities,
   and AI-request epoch invalidation.
 - `src/store/analysisActions.ts` — analysis-mode toggles, the continuous-search
@@ -102,6 +105,12 @@ The store uses this queue for continuous analysis and AI moves.
 Easy Go uses browser storage only:
 
 - Settings are stored in `localStorage` under versioned keys.
+- The current game tree (moves, branches, the active node, and AI-player
+  state) is stored in `localStorage` under `easy-go:game:v1` and restored on
+  page load, so a refresh continues the game. Engine analysis results are
+  intentionally not persisted; they are recomputed on demand.
+- New-game dialog choices (board size, side, self-play) live under
+  `easy-go:opening:v1` so the opening settings survive a refresh.
 - Downloaded model weights are cached in IndexedDB under
   `easy-go-model-cache` and verified by MD5 before reuse.
 

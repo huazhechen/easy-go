@@ -10,6 +10,7 @@ import { useDisplayWinRate } from '../hooks/useDisplayWinRate';
 import { useHintMode } from '../hooks/useHintMode';
 import { useModelManager } from '../hooks/useModelManager';
 import { useScoreJudgment } from '../hooks/useScoreJudgment';
+import { loadStoredOpeningSettings, saveStoredOpeningSettings } from '../store/gamePersistence';
 import { LogoMark } from './LogoMark';
 import { MatchCard } from './MatchCard';
 import { BoardGrid } from './BoardGrid';
@@ -32,10 +33,12 @@ export function BattleApp() {
     settings,
     engineStatus,
     isAiThinking,
+    recommendationSettledNodeId,
     aiColor,
     isAiPlaying,
     isAnalysisMode,
     isContinuousAnalysis,
+    restoredFromStorage,
     startNewGame,
     updateSettings,
     toggleAi,
@@ -58,10 +61,12 @@ export function BattleApp() {
     settings: state.settings,
     engineStatus: state.engineStatus,
     isAiThinking: state.isAiThinking,
+    recommendationSettledNodeId: state.recommendationSettledNodeId,
     aiColor: state.aiColor,
     isAiPlaying: state.isAiPlaying,
     isAnalysisMode: state.isAnalysisMode,
     isContinuousAnalysis: state.isContinuousAnalysis,
+    restoredFromStorage: state.restoredFromStorage,
     startNewGame: state.startNewGame,
     updateSettings: state.updateSettings,
     toggleAi: state.toggleAi,
@@ -74,9 +79,10 @@ export function BattleApp() {
     toggleContinuousAnalysis: state.toggleContinuousAnalysis,
   })));
 
-  const [size, setSize] = useState(9);
-  const [humanColor, setHumanColor] = useState<Player>('black');
-  const [selfPlayMode, setSelfPlayMode] = useState(false);
+  const [savedOpening] = useState(loadStoredOpeningSettings);
+  const [size, setSize] = useState(savedOpening?.boardSize ?? 9);
+  const [humanColor, setHumanColor] = useState<Player>(savedOpening?.humanColor ?? 'black');
+  const [selfPlayMode, setSelfPlayMode] = useState(savedOpening?.selfPlay ?? false);
   const [notice, setNotice] = useState('');
   const [initialLoading, setInitialLoading] = useState(true);
   const [hintLoading, setHintLoading] = useState(false);
@@ -94,6 +100,9 @@ export function BattleApp() {
   const recommendationIterations = analysisData?.rootVisits ?? currentNode.analysisVisitsRequested ?? 0;
   const selfPlay = selfPlayMode;
   const opponentTurn = !selfPlay && currentPlayer === aiColor;
+  const aiTurnActive = !selfPlay && aiColor !== null && (isAiThinking || opponentTurn);
+  const blackThinking = aiTurnActive && aiColor === 'black';
+  const whiteThinking = aiTurnActive && aiColor === 'white';
   const lastMoveWasPass = moveHistory.at(-1)?.x === -1 && moveHistory.at(-1)?.y === -1;
   const consecutivePasses = moveHistory.length >= 2
     && moveHistory.at(-2)?.x === -1 && moveHistory.at(-2)?.y === -1
@@ -126,10 +135,9 @@ export function BattleApp() {
   }
 
   // The continuous recommendation search is the steady power draw, so keep it
-  // running only while hints are actually requested (temporary peek or
-  // locked-on display) or while the AI is choosing a move. The AI's own move
-  // search re-enables the loop when it starts, so pausing with hints off
-  // never delays an AI turn.
+  // running only while hints are actually requested (permanent display) or
+  // while the AI is choosing a move. The AI's own move search re-enables the
+  // loop when it starts, so pausing with hints off never delays an AI turn.
   useEffect(() => {
     const shouldSearch = hintMode !== 'off' || isAiThinking;
     if (shouldSearch && !isContinuousAnalysis) toggleContinuousAnalysis();
@@ -145,20 +153,33 @@ export function BattleApp() {
     if (didInitialize.current) return;
     didInitialize.current = true;
     updateSettings({ katagoMaxTimeMs: model.thinkingMs, katagoBatchSize: 1 });
-    // Always pass through the default new-game path on a fresh page load.
-    // The initial store already has a 9x9 board, so checking only the board
-    // size skipped this lifecycle and left the first analysis waiting for a
-    // later move to change the position.
-    startNewGame({ komi: 6.5, rules: 'japanese', boardSize: 9, handicap: 0 });
+    const state = useGameStore.getState();
+    if (!state.restoredFromStorage) {
+      // Always pass through the default new-game path on a fresh page load.
+      // The initial store already has a 9x9 board, so checking only the board
+      // size skipped this lifecycle and left the first analysis waiting for a
+      // later move to change the position.
+      startNewGame({ komi: 6.5, rules: 'japanese', boardSize: 9, handicap: 0 });
+    }
     window.setTimeout(() => {
-      const state = useGameStore.getState();
-      if (!selfPlayMode && !state.isAiPlaying) state.toggleAi(humanColor === 'black' ? 'white' : 'black');
+      const latest = useGameStore.getState();
+      if (latest.restoredFromStorage) {
+        // A saved AI-vs-human game resumes its turn; the engine request
+        // itself waits for the model to finish loading.
+        if (latest.isAiPlaying && latest.aiColor && latest.currentPlayer === latest.aiColor && !latest.isAiThinking) {
+          latest.makeAiMove();
+        }
+        return;
+      }
+      if (!selfPlayMode && !latest.isAiPlaying) latest.toggleAi(humanColor === 'black' ? 'white' : 'black');
     }, 0);
   }, [board.length, humanColor, model.thinkingMs, selfPlayMode, startNewGame, updateSettings]);
 
   useEffect(() => {
+    // Restored games keep their saved AI state; only fresh loads auto-enable.
+    if (restoredFromStorage) return;
     if (!selfPlayMode && !isAiPlaying) toggleAi(humanColor === 'black' ? 'white' : 'black');
-  }, [humanColor, isAiPlaying, selfPlayMode, toggleAi]);
+  }, [humanColor, isAiPlaying, restoredFromStorage, selfPlayMode, toggleAi]);
 
   // A new position invalidates pending hint-loading state.
   if (lastPositionKey !== currentNode.id || lastPlayer !== currentPlayer) {
@@ -213,10 +234,15 @@ export function BattleApp() {
     const tierThinkingMs = draft.thinkingMsByTier[tierId] ?? defaultThinkingForTier(tier);
     const confirmed = await model.confirmModelSelection(tierId, tierThinkingMs);
     if (!confirmed) return;
-    setSize(draft.boardSize);
+    setSize(draft.boardSize as BoardSize);
     setHumanColor(draft.humanColor);
     setSelfPlayMode(draft.selfPlay);
     setShowNewGame(false);
+    saveStoredOpeningSettings({
+      boardSize: draft.boardSize as BoardSize,
+      humanColor: draft.humanColor,
+      selfPlay: draft.selfPlay,
+    });
     startNewGame({ komi: 6.5, rules: 'japanese', boardSize: draft.boardSize as BoardSize, handicap: 0 });
     const ai = draft.humanColor === 'black' ? 'white' : 'black';
     if (draft.selfPlay) {
@@ -229,6 +255,10 @@ export function BattleApp() {
   };
 
   const recommendationLabel = `推荐落点（${formatIterations(recommendationIterations)}）`;
+  // Flash while the MCTS search is actively deepening; a settled
+  // (early-stopped) position keeps the label steady white instead.
+  const recommendationSearching =
+    isContinuousAnalysis && (isAiThinking || recommendationSettledNodeId !== currentNode.id);
   const showThinkingSpinner = isContinuousAnalysis && engineStatus === 'loading' && !(analysisData?.moves?.length);
   const showBoardLoading =
     (initialLoading && !isAiThinking && engineStatus === 'loading')
@@ -253,6 +283,8 @@ export function BattleApp() {
         currentPlayer={currentPlayer}
         blackIsHuman={selfPlay || humanColor === 'black'}
         whiteIsHuman={selfPlay || humanColor === 'white'}
+        blackThinking={blackThinking}
+        whiteThinking={whiteThinking}
         displayWinRate={displayWinRate}
       />
 
@@ -264,6 +296,7 @@ export function BattleApp() {
           previousBoard={currentNode.parent?.gameState.board}
           hints={topMoves}
           hintMode={hintMode}
+          hintsSearching={recommendationSearching}
           showTerritory={scoreTerritoryVisible}
           territory={judgedTerritory}
           thinkingActive={isAiThinking || opponentTurn}
@@ -287,6 +320,7 @@ export function BattleApp() {
         hintMode={hintMode}
         scoreMode={score.scoreMode}
         recommendationLabel={recommendationLabel}
+        recommendationSearching={recommendationSearching}
         showThinkingSpinner={showThinkingSpinner}
         onUndo={undoMove}
         onPass={handlePass}
