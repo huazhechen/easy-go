@@ -47,7 +47,7 @@ game dialog:
   the local IndexedDB cache after first use.
 - **B10 (10M)** — the default; a 10-block 128-channel network. B6 and B10 are
   both warmed into the local IndexedDB cache in the background. When B10 is
-  not cached yet the app starts on B6 immediately (降档), downloads B10 in the
+  not cached yet the app starts on B6 immediately, downloads B10 in the
   background, and silently switches to it when ready.
 - **B18 (96M)** — the recommended b18c384nbt network. Selecting it opens a
   download dialog with a progress bar; the file is hosted as four ≤24 MiB

@@ -70,7 +70,7 @@ describe('AI move strength settings', () => {
       player: 'black',
     }));
 
-    useGameStore.getState().toggleContinuousAnalysis(false);
+    useGameStore.getState().toggleContinuousAnalysis();
     useGameStore.getState().startNewGame({ komi: 6.5, rules: 'japanese', boardSize: 19, handicap: 0 });
   });
 });

@@ -117,7 +117,7 @@ export function BattleApp() {
   // Keep recommendations continuously improving independently of the
   // opponent's thinking preset.
   useEffect(() => {
-    if (!isContinuousAnalysis) toggleContinuousAnalysis(true);
+    if (!isContinuousAnalysis) toggleContinuousAnalysis();
   }, [isContinuousAnalysis, toggleContinuousAnalysis]);
 
   useEffect(() => {
@@ -137,7 +137,7 @@ export function BattleApp() {
     window.setTimeout(() => {
       const state = useGameStore.getState();
       if (!selfPlayMode && !state.isAiPlaying) state.toggleAi(humanColor === 'black' ? 'white' : 'black');
-      if (!state.isContinuousAnalysis) state.toggleContinuousAnalysis(true);
+      if (!state.isContinuousAnalysis) state.toggleContinuousAnalysis();
     }, 0);
   }, [board.length, humanColor, model.thinkingMs, selfPlayMode, startNewGame, updateSettings]);
 

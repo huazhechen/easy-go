@@ -81,7 +81,7 @@ interface GameStore extends GameState {
   toggleAi: (color: Player) => void;
   setAiPlayer: (color: Player | null, enabled?: boolean) => void;
   toggleAnalysisMode: () => void;
-  toggleContinuousAnalysis: (quiet?: boolean) => void;
+  toggleContinuousAnalysis: () => void;
   playMove: (x: number, y: number, isLoad?: boolean) => void;
   makeAiMove: (opts?: { force?: boolean }) => void;
   undoMove: () => void; // Go back
@@ -180,8 +180,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       };
     }),
 
-  toggleContinuousAnalysis: (quiet = false) => {
-    void quiet;
+  toggleContinuousAnalysis: () => {
     const next = !get().isContinuousAnalysis;
     set((state) => ({ isContinuousAnalysis: next, isAnalysisMode: next ? true : state.isAnalysisMode }));
     if (!next) {
@@ -587,7 +586,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const epoch = getAiRequestEpoch();
     const thinkingMs = Math.max(25, Math.min(initial.settings.katagoMaxTimeMs, ENGINE_MAX_TIME_MS));
     set({ isAiThinking: true, isAnalysisMode: true });
-    if (!initial.isContinuousAnalysis) get().toggleContinuousAnalysis(true);
+    if (!initial.isContinuousAnalysis) get().toggleContinuousAnalysis();
     void (async () => {
       await sleep(thinkingMs);
       while (true) {
