@@ -46,10 +46,13 @@
 .hint-dot { font-size:calc(33.6cqw / var(--board-size)); line-height:1; transform:translateY(1px); }
 .board-loading { position:absolute; inset:0; z-index:10; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; background:#17231d66; backdrop-filter:grayscale(1) blur(1px); color:#fff; font-size:12px; font-weight:700; }.loading-track { width:46%; height:5px; border-radius:99px; background:#ffffff55; overflow:hidden; }.loading-track i { display:block; width:45%; height:100%; border-radius:inherit; background:#fff; animation:easygo-loading 1.2s ease-in-out infinite; }@keyframes easygo-loading { 0%{transform:translateX(-110%)} 100%{transform:translateX(240%)} }
 .score-mark { position:absolute; width:46%; height:46%; border-radius:3px; z-index:3; pointer-events:none; opacity:.85; }.score-mark.black { background:#123f70; }.score-mark.white { background:#f3f5f6; border:1px solid #7e8b93; }
+.hover-stone-hitbox { position:absolute; width:calc((100% - var(--board-inset-left) - var(--board-inset-right)) / var(--board-size)); height:calc((100% - var(--board-inset-top) - var(--board-inset-bottom)) / var(--board-size)); transform:translate(-50%,-50%); display:grid; place-items:center; pointer-events:none; z-index:4; }.hover-stone { width:84%; aspect-ratio:1; border-radius:50%; opacity:.45; }
 .new-game-header { display:inline-flex; align-items:center; gap:6px; height:36px; padding:0 11px; border:1px solid #dfe7e1; border-radius:9px; background:#fff; color:#5c6d64; font-size:12px; font-weight:650; }
 .battle-actions { grid-template-columns:repeat(4, minmax(0, 1fr)); }
 .battle-actions .recommendation-toggle.active { background:#123f70; border-color:#123f70; color:#fff; box-shadow:0 2px 8px #123f7038; }
-.battle-actions .recommendation-toggle.active .thinking-spinner { border-color:#6e8eaf; border-top-color:#fff; }
+.battle-actions .recommendation-toggle.peek { background:#123f70; border-color:#123f70; color:#fff; box-shadow:0 2px 8px #123f7038; }
+.battle-actions .recommendation-toggle.active .thinking-spinner,
+.battle-actions .recommendation-toggle.peek .thinking-spinner { border-color:#6e8eaf; border-top-color:#fff; }
 .battle-actions .score-toggle.active { background:#123f70; border-color:#123f70; color:#fff; }
 .score-toast { display:flex; align-items:center; gap:12px; cursor:pointer; white-space:nowrap; }.score-toast-points { display:flex; flex-direction:column; align-items:flex-start; gap:2px; line-height:1.2; }.score-toast-divider { width:1px; height:28px; background:#71807966; flex:none; }.score-toast-leader { white-space:nowrap; }
 .score-legend { display:flex; justify-content:center; gap:15px; color:#65756c; font-size:12px; margin:-6px 0 16px; }.score-legend span { display:flex; align-items:center; gap:5px; }.score-legend i { width:10px; height:10px; border-radius:2px; display:inline-block; }.score-legend i.black { background:#123f70; }.score-legend i.white { background:#f3f5f6; border:1px solid #7e8b93; }
@@ -82,7 +85,7 @@
    engine is refreshing a newly played position. */
 .match-card {
   display: grid !important;
-  grid-template-columns: 27px minmax(0, 1fr) minmax(112px, 42%) minmax(0, 1fr) 27px !important;
+  grid-template-columns: 27px minmax(0, 1fr) auto minmax(0, 1fr) 27px !important;
   align-items: center !important;
   gap: 8px !important;
   min-height: 72px !important;
@@ -143,7 +146,7 @@
 .match-rate-values { display: flex; align-items: baseline; justify-content: center; gap: 5px; line-height: 1; }
 .match-card .match-rate-black,
 .match-card .match-rate-white { position: static !important; left: auto !important; right: auto !important; transform: none !important; color: #123f70 !important; text-shadow: none !important; font: 800 18px/1 Arial, sans-serif !important; white-space: nowrap; }
-.match-rate-values { gap: 8px; }
+.match-rate-values { gap: 0; }
 .match-card > .stone-avatar {
   position: absolute !important;
   top: 50% !important;
@@ -236,17 +239,26 @@
   background: #dfad68 !important;
 }
 .battle-shell .score-toggle.active,
-.battle-shell .recommendation-toggle.active {
+.battle-shell .recommendation-toggle.active,
+.battle-shell .recommendation-toggle.peek {
   border-color: transparent !important;
   color: #fff !important;
   box-shadow: 0 2px 6px rgba(70,45,20,.28) !important;
 }
 .battle-shell .score-toggle.active,
 .battle-shell .recommendation-toggle.active,
+.battle-shell .recommendation-toggle.peek,
 .battle-shell .dialog-options button.selected {
   background: #5a2f0f !important;
   border-color: #3f2009 !important;
   color: #fff !important;
+}
+.battle-shell .recommendation-label.flashing {
+  animation: recommendation-peek-flash 1.2s ease-in-out infinite alternate;
+}
+@keyframes recommendation-peek-flash {
+  from { color: #000; }
+  to { color: #fff; }
 }
 .battle-shell button.score-toggle.active:hover,
 .battle-shell button.score-toggle.active:focus,
@@ -254,6 +266,9 @@
 .battle-shell button.recommendation-toggle.active:hover,
 .battle-shell button.recommendation-toggle.active:focus,
 .battle-shell button.recommendation-toggle.active:focus-visible,
+.battle-shell button.recommendation-toggle.peek:hover,
+.battle-shell button.recommendation-toggle.peek:focus,
+.battle-shell button.recommendation-toggle.peek:focus-visible,
 .battle-shell .dialog-options button.selected:hover,
 .battle-shell .dialog-options button.selected:focus,
 .battle-shell .dialog-options button.selected:focus-visible {
@@ -272,7 +287,22 @@
   border: 1px solid #b4824c !important;
 }
 @media (max-width: 430px) {
-  .match-card { grid-template-columns: 27px minmax(0, 1fr) minmax(96px, 34%) minmax(0, 1fr) 27px !important; gap: 6px !important; padding-inline: 10px !important; }
+  .match-card { grid-template-columns: 27px minmax(0, 1fr) auto minmax(0, 1fr) 27px !important; gap: 6px !important; padding-inline: 10px !important; }
+}
+
+/* Stack each player's name above its capture count so long AI names fit;
+   the win-rate column keeps only its content width and the colon stays
+   centered between the two numbers. */
+.match-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.match-side.right {
+  align-items: center;
+  justify-content: center;
 }
 
 /* Keep the two stones in the symmetric edge columns; the indicator remains
@@ -285,6 +315,23 @@
   align-self: center !important;
   justify-self: stretch !important;
   transform: none !important;
+}
+
+/* Match card: put the names on the outer columns and the stones next to the
+   win-rate in the middle, so each stone separates its side's name from the
+   win-rate. DOM order is kept; only the grid placement changes. */
+.match-card {
+  grid-template-columns: minmax(0, 1fr) 27px auto 27px minmax(0, 1fr) !important;
+}
+.match-card > :nth-child(1) { grid-row: 1 !important; grid-column: 2 !important; }
+.match-card > :nth-child(2) { grid-row: 1 !important; grid-column: 1 !important; padding-left: 0 !important; }
+.match-card > :nth-child(3) { grid-row: 1 !important; grid-column: 3 !important; }
+.match-card > :nth-child(4) { grid-row: 1 !important; grid-column: 5 !important; padding-right: 0 !important; }
+.match-card > :nth-child(5) { grid-row: 1 !important; grid-column: 4 !important; }
+.match-card > .stone-avatar.black-stone,
+.match-card > .stone-avatar.white-stone {
+  left: auto !important;
+  right: auto !important;
 }
 
 /* Model tier picker and b18 download dialog inside the new-game dialog. */

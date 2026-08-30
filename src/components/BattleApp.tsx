@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { FaCalculator, FaFlag, FaLightbulb, FaRedo, FaUndo } from 'react-icons/fa';
 
+type HintMode = 'off' | 'peek' | 'always';
+
 function LogoMark({ className = '' }: { className?: string }) {
   return (
     <svg className={`logo-mark ${className}`} viewBox="0 0 48 48" aria-label="Easy Go logo" role="img">
@@ -15,6 +17,7 @@ function LogoMark({ className = '' }: { className?: string }) {
 import { useGameStore } from '../store/gameStore';
 import type { BoardSize, CandidateMove, GameSettings } from '../types';
 import { getHoshiPoints } from '../utils/boardSize';
+import { isValidMove } from '../utils/gameLogic';
 import {
   DEFAULT_MODEL_TIER_ID,
   getModelTier,
@@ -162,7 +165,7 @@ export function BattleApp() {
     undoMove: state.undoMove,
   }));
   const [size, setSize] = useState<number>(9);
-  const [showHints, setShowHints] = useState(true);
+  const [hintMode, setHintMode] = useState<HintMode>('off');
   const [showNewGame, setShowNewGame] = useState(false);
   const [showScore, setShowScore] = useState(false);
   const [showTerritory, setShowTerritory] = useState(false);
@@ -178,6 +181,7 @@ export function BattleApp() {
   const [draftHumanColor, setDraftHumanColor] = useState<'black' | 'white'>('black');
   const [draftSelfPlayMode, setDraftSelfPlayMode] = useState(false);
   const [notice, setNotice] = useState('');
+  const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number } | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [scanlineDone, setScanlineDone] = useState(false);
   const [selectedModelTier, setSelectedModelTier] = useState<KataGoModelTierId>(() => {
@@ -196,14 +200,17 @@ export function BattleApp() {
   const downloadAbortRef = useRef<AbortController | null>(null);
   const b18BlobUrlRef = useRef<string | null>(null);
   const didInitialize = useRef(false);
+  const prevMoveCountRef = useRef(moveHistory.length);
   const boardSize = board.length;
   const topMoves = useMemo(() => (analysisData?.moves ?? []).slice(0, 3), [analysisData]);
   const recommendationIterations = analysisData?.rootVisits ?? currentNode.analysisVisitsRequested ?? 0;
-  const hintRates = topMoves.map((move) => move.winRate);
+  // Analysis win rates are always black-perspective; the board shows them
+  // from the side to move's point of view.
+  const hintRates = topMoves.map((move) => (currentPlayer === 'white' ? 1 - move.winRate : move.winRate));
   const minHintRate = hintRates.length ? Math.min(...hintRates) : 0;
   const maxHintRate = hintRates.length ? Math.max(...hintRates) : 1;
   const selfPlay = selfPlayMode;
-  const hintsVisible = showHints;
+  const hintsVisible = hintMode !== 'off';
   const selectedModelTierConfig = getModelTier(selectedModelTier);
   const thinkingMs = thinkingMsByTier[selectedModelTier] ?? defaultThinkingForTier(selectedModelTierConfig);
   const selectedModelLabel = selectedModelTierConfig?.label ?? selectedModelTier;
@@ -242,7 +249,6 @@ export function BattleApp() {
   // Recommendations calculate automatically, but remain hidden until the
   // player explicitly enables their display.
   useEffect(() => {
-    setShowHints(false);
     setHintLoading(false);
     setScanlineDone(false);
     setScoreNotice(null);
@@ -250,6 +256,15 @@ export function BattleApp() {
     setShowTerritory(false);
     setShowScore(false);
   }, [currentNode.id, currentPlayer]);
+
+  // "仅本手" hints expire as soon as a new move is played; history
+  // navigation and undos leave the peek active.
+  useEffect(() => {
+    if (hintMode === 'peek' && moveHistory.length > prevMoveCountRef.current) {
+      setHintMode('off');
+    }
+    prevMoveCountRef.current = moveHistory.length;
+  }, [hintMode, moveHistory.length]);
 
   useEffect(() => {
     if (!isAiThinking || !hintLoading) return;
@@ -341,12 +356,10 @@ export function BattleApp() {
     setNotice(`${nextSize} 路棋盘已准备好`);
   };
 
-  const toggleHintVisibility = () => {
-    setShowTerritory(false);
-    setScoreNotice(null);
-    const nextVisible = !showHints;
-    setShowHints(nextVisible);
-    if (nextVisible && !(analysisData?.moves?.length) && !isAiThinking && !hintLoading) {
+  const cycleHintMode = () => {
+    const next: HintMode = hintMode === 'off' ? 'peek' : hintMode === 'peek' ? 'always' : 'off';
+    setHintMode(next);
+    if (next !== 'off' && !(analysisData?.moves?.length) && !isAiThinking && !hintLoading) {
       setHintLoading(true);
       if (!isAnalysisMode) toggleAnalysisMode();
     }
@@ -357,6 +370,16 @@ export function BattleApp() {
     playMove(x, y);
   };
   const opponentTurn = !selfPlay && currentPlayer === aiColor;
+  // Show a translucent stone of the side to move wherever a real click would
+  // actually place one: the point must be empty, it must be the human's turn,
+  // and the move must pass the same legality checks playMove uses.
+  const hoverStoneColor: 'black' | 'white' | null = (() => {
+    if (!hoverPoint || opponentTurn || isAiThinking) return null;
+    const { x, y } = hoverPoint;
+    if (board[y]?.[x]) return null;
+    if (!isValidMove(board, x, y, currentPlayer, currentNode.parent?.gameState.board)) return null;
+    return currentPlayer;
+  })();
   const showThinkingScanline = !scanlineDone && (isAiThinking || opponentTurn);
   const lastMoveWasPass = moveHistory.at(-1)?.x === -1 && moveHistory.at(-1)?.y === -1;
   const consecutivePasses = moveHistory.length >= 2
@@ -534,7 +557,7 @@ export function BattleApp() {
   // actual CSS cell width (available span / boardSize), not boardSize - 1.
   const pointInset = (2.4 + 42 / boardSize) / (1 + 0.84 / boardSize);
   const pointSpan = 100 - pointInset * 2;
-  const aiThinkingName = formatThinkingMs(thinkingMs);
+  const aiThinkingName = `${selectedModelLabel}-${formatThinkingMs(thinkingMs)}`;
   const blackSideName = selfPlay ? '黑' : humanColor === 'black' ? '你' : aiThinkingName;
   const whiteSideName = selfPlay ? '白' : humanColor === 'white' ? '你' : aiThinkingName;
   const undoTwoMoves = () => {
@@ -548,12 +571,10 @@ export function BattleApp() {
       return;
     }
     if (scoreCache) {
-      setShowHints(false);
       setScoreNotice(scoreCache);
       setShowTerritory(true);
       return;
     }
-    setShowHints(false);
     if (!isAnalysisMode) toggleAnalysisMode();
     setScoreLoading(true);
     await runAnalysis({ force: true, visits: 80, topK: 3, maxChildren: boardSize * boardSize, analysisPvLen: 4 });
@@ -582,7 +603,7 @@ export function BattleApp() {
         <span className="stone-avatar black-stone">
           {currentPlayer === 'black' && <span className={selfPlay || humanColor === 'black' ? 'turn-mark active' : 'turn-mark thinking'} aria-label="黑方回合" />}
         </span>
-        <div className="match-side"><strong>{blackSideName}</strong><small className="match-captures">（提子: {capturedWhite}）</small></div>
+        <div className="match-side"><strong>{blackSideName}</strong><small className="match-captures">提子: {capturedWhite}</small></div>
         <div className="match-score">
           <div className="match-rate-track" aria-hidden="true">
             <span className="match-rate-track-black" />
@@ -593,14 +614,14 @@ export function BattleApp() {
             <strong className="match-rate-white">{Math.round((1 - displayWinRate) * 100)}</strong>
           </div>
         </div>
-        <div className="match-side right"><strong>{whiteSideName}</strong><small className="match-captures">（提子: {capturedBlack}）</small></div>
+        <div className="match-side right"><strong>{whiteSideName}</strong><small className="match-captures">提子: {capturedBlack}</small></div>
         <span className="stone-avatar white-stone">
           {currentPlayer === 'white' && <span className={selfPlay || humanColor === 'white' ? 'turn-mark active' : 'turn-mark thinking'} aria-label="白方回合" />}
         </span>
       </section>
 
       <section className="board-wrap" aria-label="围棋棋盘">
-        <div className="board-grid" style={{ '--board-size': boardSize, '--board-inset-left': `${pointInset}%`, '--board-inset-top': `${pointInset}%`, '--board-inset-right': `${pointInset}%`, '--board-inset-bottom': `${pointInset}%` } as CSSProperties}>
+        <div className="board-grid" onMouseLeave={() => setHoverPoint(null)} style={{ '--board-size': boardSize, '--board-inset-left': `${pointInset}%`, '--board-inset-top': `${pointInset}%`, '--board-inset-right': `${pointInset}%`, '--board-inset-bottom': `${pointInset}%` } as CSSProperties}>
           {Array.from({ length: boardSize }, (_, index) => <span key={`h-${index}`} className="board-line horizontal" style={{ left: `${pointInset}%`, width: `${pointSpan}%`, top: `${pointInset + (index / (boardSize - 1)) * pointSpan}%` }} />)}
           {Array.from({ length: boardSize }, (_, index) => <span key={`v-${index}`} className="board-line vertical" style={{ top: `${pointInset}%`, height: `${pointSpan}%`, left: `${pointInset + (index / (boardSize - 1)) * pointSpan}%` }} />)}
           {showThinkingScanline && (
@@ -629,25 +650,31 @@ export function BattleApp() {
             const y = Math.floor(index / boardSize);
             const stone = board[y]?.[x];
             const hint = hintsVisible ? hintAt(x, y) : undefined;
+            const hintSideWinRate = hint ? (currentPlayer === 'white' ? 1 - hint.winRate : hint.winRate) : 0;
             const hintAlpha = hint
-              ? 0.35 + (maxHintRate === minHintRate ? 0.6 : ((hint.winRate - minHintRate) / (maxHintRate - minHintRate)) * 0.6)
+              ? 0.35 + (maxHintRate === minHintRate ? 0.6 : ((hintSideWinRate - minHintRate) / (maxHintRate - minHintRate)) * 0.6)
               : 0;
             const territoryValue = analysisData?.territory?.[y]?.[x];
             const territoryOwner = typeof territoryValue === 'number' ? territoryValue >= 0 ? 'black' : 'white' : null;
             const pointStyle = { left: `${pointInset + (x / (boardSize - 1)) * pointSpan}%`, top: `${pointInset + (y / (boardSize - 1)) * pointSpan}%` };
-            return <button key={`${x}-${y}`} style={pointStyle} className={`intersection ${hoshi.has(`${x}-${y}`) ? 'hoshi' : ''}`} onClick={() => handlePoint(x, y)} aria-label={`${x + 1},${y + 1}`}>
-              {hint && !stone && <span className={`hint-dot rank-${topMoves.findIndex((move) => move === hint)}`} style={{ backgroundColor: `rgba(211,47,47,${hintAlpha.toFixed(3)})` }}>{percent(selfPlay && currentPlayer === 'white' ? 1 - hint.winRate : hint.winRate)}</span>}
+            return <button key={`${x}-${y}`} style={pointStyle} className={`intersection ${hoshi.has(`${x}-${y}`) ? 'hoshi' : ''}`} onClick={() => handlePoint(x, y)} onMouseEnter={() => setHoverPoint({ x, y })} onFocus={() => setHoverPoint({ x, y })} onBlur={() => setHoverPoint((prev) => (prev?.x === x && prev?.y === y ? null : prev))} aria-label={`${x + 1},${y + 1}`}>
+              {hint && !stone && <span className={`hint-dot rank-${topMoves.findIndex((move) => move === hint)}`} style={{ backgroundColor: `rgba(211,47,47,${hintAlpha.toFixed(3)})` }}>{percent(hintSideWinRate)}</span>}
               {stone && <span className={`board-stone ${stone === 'black' ? 'black-stone' : 'white-stone'}`} />}
               {currentNode.move?.x === x && currentNode.move?.y === y && <span className="last-move-marker" />}
-              {showTerritory && territoryOwner && (!stone || territoryOwner !== stone) && <span className={`score-mark ${territoryOwner}`} />}
+              {showTerritory && territoryOwner && !hint && (!stone || territoryOwner !== stone) && <span className={`score-mark ${territoryOwner}`} />}
             </button>;
           })}
+          {hoverStoneColor && hoverPoint && (
+            <span className="hover-stone-hitbox" style={{ left: `${pointInset + (hoverPoint.x / (boardSize - 1)) * pointSpan}%`, top: `${pointInset + (hoverPoint.y / (boardSize - 1)) * pointSpan}%` }} aria-hidden="true">
+              <span className={`hover-stone ${hoverStoneColor}-stone`} />
+            </span>
+          )}
         </div>
         {downloadPhase === 'downloading' && <div className="board-loading"><div className="loading-track"><i /></div><span>模型下载中（B18）{downloadPercent()}%</span></div>}
-        {downloadPhase !== 'downloading' && ((initialLoading && !isAiThinking && engineStatus !== 'ready' && engineStatus !== 'error') || scoreLoading || (showHints && hintLoading)) && <div className="board-loading"><div className="loading-track"><i /></div><span>{scoreLoading ? 'AI 判定中…' : hintLoading ? 'AI 计算中…' : `模型加载中（${selectedModelLabel}）…`}</span></div>}
+        {downloadPhase !== 'downloading' && ((initialLoading && !isAiThinking && engineStatus !== 'ready' && engineStatus !== 'error') || scoreLoading || (hintMode !== 'off' && hintLoading)) && <div className="board-loading"><div className="loading-track"><i /></div><span>{scoreLoading ? 'AI 判定中…' : hintLoading ? 'AI 计算中…' : `模型加载中（${selectedModelLabel}）…`}</span></div>}
       </section>
 
-      <div className="battle-actions"><button type="button" onClick={undoTwoMoves} disabled={!moveHistory.length}><FaUndo />悔棋</button><button type="button" onClick={handlePass} disabled={!selfPlay && (opponentTurn || isAiThinking)}><FaFlag />{lastMoveWasPass ? '终局' : '停着'}</button><button type="button" onClick={() => void openScore()} disabled={!selfPlay && (opponentTurn || isAiThinking)} className={scoreCache && showTerritory ? 'score-toggle active' : 'score-toggle'}><FaCalculator />局势判定</button><button type="button" className={showHints ? 'recommendation-toggle active' : 'recommendation-toggle'} aria-pressed={showHints} onClick={toggleHintVisibility} disabled={!selfPlay && (opponentTurn || isAiThinking)}><FaLightbulb />推荐落点（{formatIterations(recommendationIterations)}）{isContinuousAnalysis && engineStatus === 'loading' && !(analysisData?.moves?.length) && <span className="thinking-spinner" aria-label="推荐落点计算中" />}</button></div>
+      <div className="battle-actions"><button type="button" onClick={undoTwoMoves} disabled={!moveHistory.length}><FaUndo />悔棋</button><button type="button" onClick={handlePass} disabled={!selfPlay && (opponentTurn || isAiThinking)}><FaFlag />{lastMoveWasPass ? '终局' : '停着'}</button><button type="button" onClick={() => void openScore()} disabled={!selfPlay && (opponentTurn || isAiThinking)} className={scoreCache && showTerritory ? 'score-toggle active' : 'score-toggle'}><FaCalculator />局势判定</button><button type="button" className={`recommendation-toggle${hintMode === 'always' ? ' active' : hintMode === 'peek' ? ' peek' : ''}`} aria-pressed={hintMode !== 'off'} aria-label={`推荐落点：${hintMode === 'off' ? '不显示' : hintMode === 'peek' ? '仅本手' : '持续显示'}`} onClick={cycleHintMode} disabled={!selfPlay && (opponentTurn || isAiThinking)}><FaLightbulb /><span className={hintMode === 'peek' ? 'recommendation-label flashing' : 'recommendation-label'}>推荐落点（{formatIterations(recommendationIterations)}）</span>{isContinuousAnalysis && engineStatus === 'loading' && !(analysisData?.moves?.length) && <span className="thinking-spinner" aria-label="推荐落点计算中" />}</button></div>
       {showScore && <div className="dialog-backdrop"><section className="result-dialog"><strong>终局结果</strong><p>{blackPoints > whitePoints ? `黑胜 ${(blackPoints - whitePoints).toFixed(1)} 目` : `白胜 ${(whitePoints - blackPoints).toFixed(1)} 目`}</p><div className="score-legend"><span><i className="black" />黑 {blackPoints.toFixed(1)} 目</span><span><i className="white" />白 {whitePoints.toFixed(1)} 目</span></div><div><button onClick={() => setShowScore(false)}>返回</button><button className="dialog-start" onClick={() => { setShowScore(false); setShowNewGame(true); }}>新对局</button></div></section></div>}
       {showNewGame && <div className="dialog-backdrop"><section className="new-game-dialog"><div className="dialog-title"><strong>新对局</strong><button onClick={() => setShowNewGame(false)} aria-label="关闭">×</button></div><label>棋盘<div className="dialog-options board-options">{SIZES.map((option) => <button key={option.size} className={draftSize === option.size ? 'selected' : ''} onClick={() => setDraftSize(option.size)}>{option.name}({option.size})</button>)}</div></label><label>执方<div className="dialog-options full-options player-options"><button className={draftHumanColor === 'black' && !draftSelfPlayMode ? 'selected' : ''} onClick={() => { setDraftHumanColor('black'); setDraftSelfPlayMode(false); }}><span className="dialog-stone black-stone" />执黑</button><button className={draftHumanColor === 'white' && !draftSelfPlayMode ? 'selected' : ''} onClick={() => { setDraftHumanColor('white'); setDraftSelfPlayMode(false); }}><span className="dialog-stone white-stone" />执白</button><button className={draftSelfPlayMode ? 'selected' : ''} onClick={() => setDraftSelfPlayMode(true)}><span className="dialog-stone black-stone" /><span className="dialog-stone white-stone" />自弈</button></div></label><label>模型<div className="dialog-options model-options">{KATAGO_MODEL_TIERS.map((tier) => <button key={tier.id} className={draftModelTier === tier.id ? 'selected' : ''} onClick={() => setDraftModelTier(tier.id)} title={`${tier.modelName} · 思考 ${tier.minThinkingMs / 1000}–${tier.maxThinkingMs / 1000} 秒`}>{tier.label}{draftModelTier === tier.id && <small>{formatThinkingSeconds(draftThinkingMsByTier[tier.id] ?? defaultThinkingForTier(tier))}</small>}</button>)}</div><input type="range" className="thinking-slider" min={getModelTier(draftModelTier)?.minThinkingMs ? Math.round(getModelTier(draftModelTier)!.minThinkingMs / 1000) : 2} max={getModelTier(draftModelTier)?.maxThinkingMs ? Math.round(getModelTier(draftModelTier)!.maxThinkingMs / 1000) : 30} step={1} value={(draftThinkingMsByTier[draftModelTier] ?? defaultThinkingForTier(getModelTier(draftModelTier))) / 1000} disabled={draftSelfPlayMode} onChange={(event) => selectThinkingMs(Number(event.target.value) * 1000)} aria-label="每步思考时间（秒）" /></label><button className="dialog-start" onClick={() => void newGame()}>开始对局</button></section></div>}
       {showModelDownload && <div className="dialog-backdrop"><section className="new-game-dialog download-dialog"><div className="dialog-title"><strong>下载 B18 模型</strong><button onClick={cancelModelDownload} aria-label="关闭">×</button></div><p className="download-note">B18 是最强模型，下载完成后会保存在本地缓存，之后打开页面无需重复下载。</p>{downloadPhase === 'downloading' && <><div className="download-progress-track" role="progressbar" aria-label="模型下载进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={downloadPercent()}><span className="download-progress-fill" style={{ width: `${downloadPercent()}%` }} /></div><div className="download-progress-label">{formatModelBytes(downloadProgress.loaded)} / {downloadProgress.total > 0 ? formatModelBytes(downloadProgress.total) : '--'}（{downloadPercent()}%）</div><div className="download-dialog-actions"><button onClick={cancelModelDownload}>取消下载</button></div></>}{downloadPhase === 'confirm' && <div className="download-dialog-actions"><button onClick={cancelModelDownload}>取消</button><button className="dialog-start" onClick={() => void startModelDownload()}>开始下载</button></div>}{downloadPhase === 'done' && <><p className="download-done">下载完成，B18 模型已启用并写入本地缓存。</p>{downloadError && <p className="download-error">{downloadError}</p>}<div className="download-dialog-actions"><button className="dialog-start" onClick={() => setShowModelDownload(false)}>完成</button></div></>}{downloadPhase === 'error' && <><p className="download-error">{downloadError || '下载失败，请稍后重试。'}</p><div className="download-dialog-actions"><button onClick={cancelModelDownload}>取消</button><button className="dialog-start" onClick={() => void startModelDownload()}>重试</button></div></>}</section></div>}
