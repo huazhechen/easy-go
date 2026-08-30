@@ -114,11 +114,16 @@ export function BattleApp() {
     }
   }
 
-  // Keep recommendations continuously improving independently of the
-  // opponent's thinking preset.
+  // The continuous recommendation search is the steady power draw, so keep it
+  // running only while hints are actually requested (temporary peek or
+  // locked-on display) or while the AI is choosing a move. The AI's own move
+  // search re-enables the loop when it starts, so pausing with hints off
+  // never delays an AI turn.
   useEffect(() => {
-    if (!isContinuousAnalysis) toggleContinuousAnalysis();
-  }, [isContinuousAnalysis, toggleContinuousAnalysis]);
+    const shouldSearch = hintMode !== 'off' || isAiThinking;
+    if (shouldSearch && !isContinuousAnalysis) toggleContinuousAnalysis();
+    else if (!shouldSearch && isContinuousAnalysis) toggleContinuousAnalysis();
+  }, [hintMode, isAiThinking, isContinuousAnalysis, toggleContinuousAnalysis]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setInitialLoading(false), 3000);
@@ -137,7 +142,6 @@ export function BattleApp() {
     window.setTimeout(() => {
       const state = useGameStore.getState();
       if (!selfPlayMode && !state.isAiPlaying) state.toggleAi(humanColor === 'black' ? 'white' : 'black');
-      if (!state.isContinuousAnalysis) state.toggleContinuousAnalysis();
     }, 0);
   }, [board.length, humanColor, model.thinkingMs, selfPlayMode, startNewGame, updateSettings]);
 
@@ -206,7 +210,7 @@ export function BattleApp() {
   const recommendationLabel = `推荐落点（${formatIterations(recommendationIterations)}）`;
   const showThinkingSpinner = isContinuousAnalysis && engineStatus === 'loading' && !(analysisData?.moves?.length);
   const showBoardLoading =
-    (initialLoading && !isAiThinking && engineStatus !== 'ready' && engineStatus !== 'error')
+    (initialLoading && !isAiThinking && engineStatus === 'loading')
     || score.loading
     || (hintMode !== 'off' && hintLoading);
 
