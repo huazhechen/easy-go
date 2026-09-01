@@ -1,3 +1,8 @@
+/**
+ * Model/search cases that load the KataGo harness and run MCTS; excluded from
+ * the default test run (see `npm run test:perf`).
+ * @module-tag perf
+ */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MctsSearch } from '../src/engine/katago/analyzeMcts';
 import { extractInputsV7Fast, type RecentMove } from '../src/engine/katago/featuresV7Fast';

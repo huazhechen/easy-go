@@ -101,6 +101,8 @@ export function isCurrentModelCacheKey(key: string): boolean {
   return key.startsWith(MODEL_CACHE_VERSION_PREFIX);
 }
 
+const verifiedMd5Key = (key: string): string => `${key}:md5`;
+
 async function readCachedModel(key: string): Promise<ArrayBuffer | null> {
   const db = await openModelCache();
   if (!db) return null;
@@ -110,6 +112,34 @@ async function readCachedModel(key: string): Promise<ArrayBuffer | null> {
     return toArrayBuffer(value);
   } catch {
     return null;
+  }
+}
+
+async function readCachedString(key: string): Promise<string | null> {
+  const db = await openModelCache();
+  if (!db) return null;
+  try {
+    const tx = db.transaction(MODEL_CACHE_STORE, 'readonly');
+    const value = await requestResult(tx.objectStore(MODEL_CACHE_STORE).get(key));
+    if (value instanceof ArrayBuffer) return new TextDecoder().decode(value);
+    if (ArrayBuffer.isView(value)) {
+      const view = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+      return new TextDecoder().decode(view);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeCachedString(key: string, value: string): Promise<void> {
+  const db = await openModelCache();
+  if (!db) return;
+  try {
+    const tx = db.transaction(MODEL_CACHE_STORE, 'readwrite');
+    await requestResult(tx.objectStore(MODEL_CACHE_STORE).put(value, key));
+  } catch {
+    // Best-effort metadata write; the bytes themselves are already written.
   }
 }
 
@@ -124,10 +154,17 @@ export async function readValidatedCachedModel(
 ): Promise<ArrayBuffer | null> {
   const cached = await readCachedModel(key);
   if (!cached) return null;
-  if (expectedMd5 && md5Hex(new Uint8Array(cached)) !== expectedMd5.toLowerCase()) {
+  if (!expectedMd5) return cached;
+
+  const normalizedMd5 = expectedMd5.toLowerCase();
+  if ((await readCachedString(verifiedMd5Key(key))) === normalizedMd5) return cached;
+
+  if (md5Hex(new Uint8Array(cached)) !== normalizedMd5) {
     await deleteCachedModel(key);
+    await deleteCachedModel(verifiedMd5Key(key));
     return null;
   }
+  await writeCachedString(verifiedMd5Key(key), normalizedMd5);
   return cached;
 }
 
@@ -136,12 +173,17 @@ export function verifyModelMd5(data: ArrayBuffer | Uint8Array, expectedMd5: stri
   return md5Hex(bytes) === expectedMd5.toLowerCase();
 }
 
-export async function writeCachedModel(key: string, data: ArrayBuffer | Uint8Array): Promise<boolean> {
+export async function writeCachedModel(
+  key: string,
+  data: ArrayBuffer | Uint8Array,
+  verifiedMd5?: string
+): Promise<boolean> {
   const db = await openModelCache();
   if (!db) return false;
   try {
     const tx = db.transaction(MODEL_CACHE_STORE, 'readwrite');
     await requestResult(tx.objectStore(MODEL_CACHE_STORE).put(data, key));
+    if (verifiedMd5) await writeCachedString(verifiedMd5Key(key), verifiedMd5.toLowerCase());
     return true;
   } catch {
     return false;
@@ -193,7 +235,7 @@ export async function ensureTierModelCached(
 
   const normalized = normalizeModelBytes(new Uint8Array(buffer));
   if (!verifyModelMd5(normalized, tier.md5)) return false;
-  await writeCachedModel(key, normalized);
+  await writeCachedModel(key, normalized, tier.md5);
   return true;
 }
 

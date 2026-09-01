@@ -17,11 +17,9 @@ import {
   resolveTierModelUrl,
 } from '../engine/katago/modelCache';
 import { readLocalStorage, writeLocalStorage } from '../utils/storage';
+import { MODEL_THINKING_STORAGE_KEY, MODEL_TIER_STORAGE_KEY } from '../utils/storageKeys';
 import { publicUrl } from '../utils/publicUrl';
 import { useModelDownload } from './useModelDownload';
-
-const MODEL_TIER_STORAGE_KEY = 'easy-go:model-tier';
-const THINKING_STORAGE_KEY = 'easy-go:model-thinking-ms';
 
 // Per-tier thinking time is stored independently, so choosing 10s on B6 never
 // changes what is selected on B10 or B18.
@@ -32,7 +30,7 @@ const readStoredThinkingMs = (): Record<KataGoModelTierId, number> => {
     b18: defaultThinkingForTier(getModelTier('b18')),
   };
   try {
-    const raw = readLocalStorage(THINKING_STORAGE_KEY);
+    const raw = readLocalStorage(MODEL_THINKING_STORAGE_KEY);
     if (!raw) return defaults;
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     for (const tier of KATAGO_MODEL_TIERS) {
@@ -220,13 +218,13 @@ export function useModelManager(notify: (message: string) => void) {
     const clamped = tier ? clampThinkingMs(thinkingMs, tier) : thinkingMs;
     setThinkingMsByTier((prev) => {
       const next = { ...prev, [tierId]: clamped };
-      writeLocalStorage(THINKING_STORAGE_KEY, JSON.stringify(next));
+      writeLocalStorage(MODEL_THINKING_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
     setSelectedModelTier(tierId);
     writeLocalStorage(MODEL_TIER_STORAGE_KEY, tierId);
     const state = useGameStore.getState();
-    state.updateSettings({ katagoMaxTimeMs: clamped, katagoBatchSize: 1 });
+    state.updateSettings({ katagoMaxTimeMs: clamped });
     return true;
   };
 

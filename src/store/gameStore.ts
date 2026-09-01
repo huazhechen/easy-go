@@ -36,6 +36,9 @@ import { analysisQueue } from '../utils/analysisQueue';
 import { rememberActiveBranchPath, type ActiveBranchMap } from '../utils/branchNavigation';
 import { loadStoredGame, saveStoredGame } from './gamePersistence';
 
+const CAPTURE_SOUND_DELAY_MS = 100;
+const AI_MOVE_SCHEDULE_DELAY_MS = 500;
+
 interface GameStore extends GameState {
   // Tree State
   rootNode: GameNode;
@@ -198,10 +201,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
           state.currentPlayer === 'white'
             ? nextState.capturedBlack - state.capturedBlack
             : nextState.capturedWhite - state.capturedWhite;
-        if (capturedCount > 0) setTimeout(() => playCaptureSound(capturedCount), 100);
+        if (capturedCount > 0) setTimeout(() => playCaptureSound(capturedCount), CAPTURE_SOUND_DELAY_MS);
       }
       if (nextState.isAiPlaying && nextState.currentPlayer === nextState.aiColor) {
-        scheduleAiMove(get, 500);
+        scheduleAiMove(get, AI_MOVE_SCHEDULE_DELAY_MS);
       }
       return;
     }
@@ -215,7 +218,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!isLoad) {
       if (state.settings.soundEnabled) {
         playStoneSound();
-        if (captured.length > 0) setTimeout(() => playCaptureSound(captured.length), 100);
+        if (captured.length > 0) setTimeout(() => playCaptureSound(captured.length), CAPTURE_SOUND_DELAY_MS);
       }
     }
 
@@ -243,7 +246,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!isLoad) {
       const newState = get();
       if (newState.isAiPlaying && newState.currentPlayer === newState.aiColor) {
-        scheduleAiMove(get, 500);
+        scheduleAiMove(get, AI_MOVE_SCHEDULE_DELAY_MS);
       }
     }
   },
@@ -302,14 +305,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     analysisQueue.cancelWhere(() => true, 'Started new game');
     analysisQueue.clearCache();
     if (state.settings.soundEnabled) playNewGameSound();
-    const normalizedBoardSize = normalizeBoardSize(boardSize, state.settings.defaultBoardSize ?? DEFAULT_BOARD_SIZE);
+    const normalizedBoardSize = normalizeBoardSize(boardSize, DEFAULT_BOARD_SIZE);
     const maxHandicap = getMaxHandicap(normalizedBoardSize);
     const safeHandicap = Math.max(0, Math.min(Math.floor(handicap), maxHandicap));
     const nextSettings: GameSettings = {
       ...state.settings,
       gameRules: rules,
-      defaultBoardSize: normalizedBoardSize,
-      defaultHandicap: safeHandicap,
     };
     saveStoredSettings(nextSettings);
 
@@ -364,7 +365,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const after = get();
       const ended = isPassMove(after.currentNode.move) && isPassMove(after.currentNode.parent?.move);
       if (!ended && after.isAiPlaying && after.aiColor && after.currentPlayer === after.aiColor) {
-        setTimeout(() => after.makeAiMove(), 500);
+        scheduleAiMove(get, AI_MOVE_SCHEDULE_DELAY_MS);
       }
       return;
     }
@@ -390,7 +391,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const after = get();
     const ended = isPassMove(after.currentNode.move) && isPassMove(after.currentNode.parent?.move);
     if (!ended && after.isAiPlaying && after.aiColor && after.currentPlayer === after.aiColor) {
-      setTimeout(() => after.makeAiMove(), 500);
+      scheduleAiMove(get, AI_MOVE_SCHEDULE_DELAY_MS);
     }
   },
 }));

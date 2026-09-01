@@ -45,6 +45,8 @@ export const REPORT_DURING_SEARCH_EVERY_MS = 1000;
 export const CONTINUOUS_REPORT_DURING_SEARCH_MS = 250;
 // Throttle UI updates during progress reports to reduce main-thread churn.
 export const PROGRESS_APPLY_MIN_MS = 500;
+/** How often tree-ownership refresh may republish during continuous search. */
+export const OWNERSHIP_REFRESH_INTERVAL_MS = 500;
 
 export const isAnalysisCanceled = (err: unknown): boolean =>
   isKataGoCanceledError(err) || isAnalysisQueueCanceledError(err) || isAnalysisQueueStaleError(err);

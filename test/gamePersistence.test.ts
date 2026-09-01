@@ -6,6 +6,7 @@ import {
   serializeOpeningSettings,
   serializeStoredGame,
 } from '../src/store/gamePersistence';
+import { GAME_STORAGE_KEY } from '../src/utils/storageKeys';
 
 const snapshotCurrentGame = () => {
   const state = useGameStore.getState();
@@ -111,7 +112,7 @@ describe('game persistence', () => {
       first.useGameStore.getState().playMove(3, 3);
       first.useGameStore.getState().toggleAi('black');
       const before = first.useGameStore.getState();
-      expect(map.get('easy-go:game:v1')).toBeTruthy();
+      expect(map.get(GAME_STORAGE_KEY)).toBeTruthy();
 
       vi.resetModules();
       const second = await import('../src/store/gameStore');

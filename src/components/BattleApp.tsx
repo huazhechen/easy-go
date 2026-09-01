@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FaRedo } from 'react-icons/fa';
+import { Link } from 'react-router-dom';
+import { FaHome, FaRedo } from 'react-icons/fa';
 import { useShallow } from 'zustand/react/shallow';
 import { useGameStore } from '../store/gameStore';
-import type { BoardSize, Player } from '../types';
-import { defaultThinkingForTier, getModelTier, type KataGoModelTierId } from '../engine/katago/modelDefaults';
+import { DEFAULT_NEW_GAME_BOARD_SIZE, type BoardSize, type Player } from '../types';
+import { defaultThinkingForTier, getModelTier, SELFPLAY_THINKING_MS, type KataGoModelTierId } from '../engine/katago/modelDefaults';
 import { formatIterations, formatThinkingMs } from '../utils/format';
 import { countTerritoryPoints } from '../utils/territoryScore';
 import { useDisplayWinRate } from '../hooks/useDisplayWinRate';
@@ -11,7 +12,6 @@ import { useHintMode } from '../hooks/useHintMode';
 import { useModelManager } from '../hooks/useModelManager';
 import { useScoreJudgment } from '../hooks/useScoreJudgment';
 import { loadStoredOpeningSettings, saveStoredOpeningSettings } from '../store/gamePersistence';
-import { LogoMark } from './LogoMark';
 import { MatchCard } from './MatchCard';
 import { BoardGrid } from './BoardGrid';
 import { BattleActions } from './BattleActions';
@@ -28,6 +28,7 @@ export function BattleApp() {
     moveHistory,
     capturedBlack,
     capturedWhite,
+    komi,
     analysisData,
     quickEvalData,
     settings,
@@ -56,6 +57,7 @@ export function BattleApp() {
     moveHistory: state.moveHistory,
     capturedBlack: state.capturedBlack,
     capturedWhite: state.capturedWhite,
+    komi: state.komi,
     analysisData: state.analysisData,
     quickEvalData: state.quickEvalData,
     settings: state.settings,
@@ -80,7 +82,7 @@ export function BattleApp() {
   })));
 
   const [savedOpening] = useState(loadStoredOpeningSettings);
-  const [size, setSize] = useState(savedOpening?.boardSize ?? 9);
+  const [size, setSize] = useState(savedOpening?.boardSize ?? DEFAULT_NEW_GAME_BOARD_SIZE);
   const [humanColor, setHumanColor] = useState<Player>(savedOpening?.humanColor ?? 'black');
   const [selfPlayMode, setSelfPlayMode] = useState(savedOpening?.selfPlay ?? false);
   const [notice, setNotice] = useState('');
@@ -123,7 +125,7 @@ export function BattleApp() {
     positionKey: currentNode.id,
   });
   const judgedTerritory = currentAnalysis?.territory ?? currentQuickEval?.territory ?? [];
-  const territoryPoints = countTerritoryPoints(judgedTerritory, capturedBlack, capturedWhite, 6.5);
+  const territoryPoints = countTerritoryPoints(judgedTerritory, capturedBlack, capturedWhite, komi);
 
   // Recommendations calculate automatically, but remain hidden until the
   // player explicitly enables their display.
@@ -152,28 +154,34 @@ export function BattleApp() {
   useEffect(() => {
     if (didInitialize.current) return;
     didInitialize.current = true;
-    updateSettings({ katagoMaxTimeMs: model.thinkingMs, katagoBatchSize: 1 });
+    updateSettings({ katagoMaxTimeMs: model.thinkingMs });
     const state = useGameStore.getState();
     if (!state.restoredFromStorage) {
-      // Always pass through the default new-game path on a fresh page load.
-      // The initial store already has a 9x9 board, so checking only the board
-      // size skipped this lifecycle and left the first analysis waiting for a
-      // later move to change the position.
-      startNewGame({ komi: 6.5, rules: 'japanese', boardSize: 9, handicap: 0 });
+      // Always pass through the default new-game path on a fresh page load so
+      // the position changes and the first analysis request is scheduled.
+      startNewGame({
+        komi: 6.5,
+        rules: 'japanese',
+        boardSize: DEFAULT_NEW_GAME_BOARD_SIZE,
+        handicap: 0,
+      });
     }
     window.setTimeout(() => {
       const latest = useGameStore.getState();
-      if (latest.restoredFromStorage) {
-        // A saved AI-vs-human game resumes its turn; the engine request
-        // itself waits for the model to finish loading.
-        if (latest.isAiPlaying && latest.aiColor && latest.currentPlayer === latest.aiColor && !latest.isAiThinking) {
-          latest.makeAiMove();
-        }
-        return;
+      // A saved AI-vs-human game resumes its turn; the engine request itself
+      // waits for the model to finish loading. Fresh loads are handled by the
+      // auto-enable effect below.
+      if (
+        latest.restoredFromStorage &&
+        latest.isAiPlaying &&
+        latest.aiColor &&
+        latest.currentPlayer === latest.aiColor &&
+        !latest.isAiThinking
+      ) {
+        latest.makeAiMove();
       }
-      if (!selfPlayMode && !latest.isAiPlaying) latest.toggleAi(humanColor === 'black' ? 'white' : 'black');
     }, 0);
-  }, [board.length, humanColor, model.thinkingMs, selfPlayMode, startNewGame, updateSettings]);
+  }, [model.thinkingMs, startNewGame, updateSettings]);
 
   useEffect(() => {
     // Restored games keep their saved AI state; only fresh loads auto-enable.
@@ -247,7 +255,7 @@ export function BattleApp() {
     const ai = draft.humanColor === 'black' ? 'white' : 'black';
     if (draft.selfPlay) {
       setAiPlayer(ai, false);
-      updateSettings({ katagoMaxTimeMs: 2000, katagoBatchSize: 1 });
+      updateSettings({ katagoMaxTimeMs: SELFPLAY_THINKING_MS });
     } else {
       toggleAi(ai);
     }
@@ -268,7 +276,9 @@ export function BattleApp() {
     <main className="battle-shell">
       <header className="battle-header">
         <div>
-          <h1><LogoMark />EASY GO</h1>
+          <Link to="/" className="home-button" aria-label="返回主页">
+            <FaHome aria-hidden="true" />主页
+          </Link>
         </div>
         <div className="header-tools">
           <button type="button" className="new-game-header" onClick={() => setShowNewGame(true)}><FaRedo />新对局</button>

@@ -1,10 +1,7 @@
 import type { BoardSize, GameNode, GameState, Move, Player } from '../types';
+import { isBoardSize } from '../utils/boardSize';
 import { readLocalStorage, removeLocalStorage, writeLocalStorage } from '../utils/storage';
-
-export const GAME_STORAGE_KEY = 'easy-go:game:v1';
-export const OPENING_STORAGE_KEY = 'easy-go:opening:v1';
-
-const BOARD_SIZES = new Set<number>([5, 7, 9, 11, 13, 15, 17, 19]);
+import { GAME_STORAGE_KEY, OPENING_STORAGE_KEY } from '../utils/storageKeys';
 
 /** The new-game dialog choices that are not already persisted elsewhere. */
 export interface OpeningSettings {
@@ -31,14 +28,6 @@ export interface StoredGame {
   aiColor: Player | null;
 }
 
-interface StoredGameSnapshot {
-  rootNode: GameNode;
-  currentNode: GameNode;
-  activeBranchChildIds: Record<string, string>;
-  isAiPlaying: boolean;
-  aiColor: Player | null;
-}
-
 export interface StoredGameJson {
   version: 1;
   rootNode: SerializedGameNode;
@@ -57,7 +46,7 @@ const isMove = (value: unknown): value is Move => {
 };
 
 const isBoardState = (value: unknown): value is GameState['board'] => {
-  if (!Array.isArray(value) || value.length === 0 || !BOARD_SIZES.has(value.length)) return false;
+  if (!Array.isArray(value) || value.length === 0 || !isBoardSize(value.length)) return false;
   const size = value.length;
   for (const row of value) {
     if (!Array.isArray(row) || row.length !== size) return false;
@@ -136,7 +125,7 @@ const rebuildNode = (
   return node;
 };
 
-export const serializeStoredGame = (snapshot: StoredGameSnapshot): string => {
+export const serializeStoredGame = (snapshot: StoredGame): string => {
   const payload: StoredGameJson = {
     version: 1,
     rootNode: serializeNode(snapshot.rootNode),
@@ -175,7 +164,7 @@ export const loadStoredGame = (): StoredGame | null => {
   return raw ? parseStoredGame(raw) : null;
 };
 
-export const saveStoredGame = (snapshot: StoredGameSnapshot): boolean =>
+export const saveStoredGame = (snapshot: StoredGame): boolean =>
   writeLocalStorage(GAME_STORAGE_KEY, serializeStoredGame(snapshot));
 
 export const clearStoredGame = (): boolean => removeLocalStorage(GAME_STORAGE_KEY);
@@ -186,7 +175,8 @@ export const parseStoredOpeningSettings = (raw: string): OpeningSettings | null 
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     if (!parsed || typeof parsed !== 'object') return null;
-    const boardSize = BOARD_SIZES.has(Number(parsed.boardSize)) ? Number(parsed.boardSize) as BoardSize : null;
+    const boardSizeRaw = Number(parsed.boardSize);
+    const boardSize = isBoardSize(boardSizeRaw) ? boardSizeRaw : null;
     const humanColor = isPlayer(parsed.humanColor) ? parsed.humanColor : null;
     if (!boardSize || !humanColor || typeof parsed.selfPlay !== 'boolean') return null;
     return { boardSize, humanColor, selfPlay: parsed.selfPlay };

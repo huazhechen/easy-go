@@ -1,5 +1,7 @@
 export type BoardSize = 5 | 7 | 9 | 11 | 13 | 15 | 17 | 19;
 export const DEFAULT_BOARD_SIZE: BoardSize = 19;
+/** Default board size shown in the new-game dialog on a fresh load. */
+export const DEFAULT_NEW_GAME_BOARD_SIZE: BoardSize = 9;
 
 export type Player = 'black' | 'white';
 export type Intersection = Player | null;
@@ -83,13 +85,8 @@ export interface GameNode {
   properties?: Record<string, string[]>;
 }
 
-export type AppLocaleId = 'en' | 'zh' | 'zh-TW' | 'ko' | 'ja' | 'fr' | 'de' | 'es' | 'it' | 'uk' | 'ru' | 'pt' | 'vi';
-
 export interface GameSettings {
-  appLocale: AppLocaleId;
   soundEnabled: boolean;
-  defaultBoardSize: BoardSize;
-  defaultHandicap: number;
   gameRules: GameRules; // KataGo rules preset (KaTrain default: japanese)
   katagoModelUrl: string;
   katagoBackend: KataGoBackendPreference;

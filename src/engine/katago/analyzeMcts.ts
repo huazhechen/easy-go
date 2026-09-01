@@ -6,7 +6,6 @@ import type { KataGoModelV8Tf } from './modelV8';
 import {
   expectedWhiteScoreValue,
   getScoreStdev,
-  getSqrtBoardArea,
   whiteDScoreValueDScoreSmoothNoDrawAdjust,
 } from './scoreValue';
 import { ENGINE_MAX_TIME_MS, ENGINE_MAX_VISITS } from './limits';
@@ -47,6 +46,29 @@ import {
 } from './graphHash';
 import { fillInputsV7Fast, type RecentMove } from './featuresV7Fast';
 import { POLICY_OPTIMISM, ROOT_POLICY_OPTIMISM } from './searchParams';
+import { colorToPlayer, playerToColor } from './color';
+import { boardStateToStones } from './boardState';
+import {
+  NUM_SYMMETRIES,
+  clampRootSymmetrySamples,
+  computeValidRootSymmetries,
+  getSymPosMap,
+  markSymmetryDuplicateMoves,
+} from './symmetry';
+import {
+  SUBTREE_VALUE_BIAS_WEIGHT_EXPONENT,
+  buildSubtreeBiasKey,
+  getSubtreeValueBiasFactor,
+  setSubtreeValueBiasFactor,
+  type SubtreeBiasEntry,
+  SubtreeBiasTable,
+} from './subtreeBias';
+import {
+  countConsecutiveEndingPasses,
+  opponentHasPassedFourTimes,
+  takeRecentMoves,
+} from './moveHistory';
+import { Rand } from './rand';
 
 export type OwnershipMode = 'root' | 'tree';
 
@@ -163,26 +185,6 @@ class Node {
   }
 }
 
-function playerToColor(p: Player): StoneColor {
-  return p === 'black' ? BLACK : WHITE;
-}
-
-function colorToPlayer(c: StoneColor): Player {
-  return c === BLACK ? 'black' : 'white';
-}
-
-function boardStateToStones(board: BoardState): Uint8Array<ArrayBuffer> {
-  const stones = new Uint8Array(BOARD_AREA);
-  for (let y = 0; y < BOARD_SIZE; y++) {
-    for (let x = 0; x < BOARD_SIZE; x++) {
-      const v = board[y]?.[x] ?? null;
-      if (!v) continue;
-      stones[y * BOARD_SIZE + x] = v === 'black' ? BLACK : WHITE;
-    }
-  }
-  return stones;
-}
-
 function computeKoPointFromPrevious(args: { board: BoardState; previousBoard?: BoardState; moveHistory: Move[] }): number {
   const { previousBoard, moveHistory } = args;
   if (!previousBoard) return -1;
@@ -205,138 +207,8 @@ function computeKoPointAfterMove(previousBoard: BoardState | undefined, move: Mo
   return pos.koPoint;
 }
 
-function takeRecentMoves(
-  rootMoves: RecentMove[],
-  pathMoves: RecentMove[],
-  max: number,
-  out: RecentMove[] = []
-): RecentMove[] {
-  out.length = 0;
-  const pushCopy = (src: RecentMove) => {
-    const idx = out.length;
-    let dst = out[idx];
-    if (!dst) {
-      dst = { move: src.move, player: src.player };
-      out[idx] = dst;
-    } else {
-      dst.move = src.move;
-      dst.player = src.player;
-    }
-    out.length = idx + 1;
-  };
-  for (let i = pathMoves.length - 1; i >= 0 && out.length < max; i--) pushCopy(pathMoves[i]!);
-  for (let i = rootMoves.length - 1; i >= 0 && out.length < max; i--) pushCopy(rootMoves[i]!);
-  out.reverse();
-  return out;
-}
-
-/** Last n entries of a move list, oldest first. */
-/** How many passes the game currently ends with, KataGo's consecutiveEndingPasses. */
-function countConsecutiveEndingPasses(moves: RecentMove[]): number {
-  let count = 0;
-  for (let i = moves.length - 1; i >= 0; i--) {
-    if (moves[i]!.move !== PASS_MOVE) break;
-    count++;
-  }
-  return count;
-}
-
 function takeLastMoves(moves: RecentMove[], n: number): RecentMove[] {
   return moves.length <= n ? moves : moves.slice(moves.length - n);
-}
-
-/**
- * KataGo's four-passes test in isAllowedRootMove: the opponent's last four moves
- * (every other entry back from the end) were all passes.
- */
-function opponentHasPassedFourTimes(moveHistory: RecentMove[], currentPlayer: Player): boolean {
-  const lastIdx = moveHistory.length - 1;
-  if (lastIdx < 6) return false;
-  const opp: Player = currentPlayer === 'black' ? 'white' : 'black';
-  for (const back of [0, 2, 4, 6]) {
-    const m = moveHistory[lastIdx - back]!;
-    if (m.move !== PASS_MOVE || m.player !== opp) return false;
-  }
-  return true;
-}
-
-/**
- * Symmetries under which the root position is unchanged, KataGo's
- * SymmetryHelpers::markDuplicateMoveLocs (cpp/neuralnet/nninputs.cpp).
- *
- * KataGo compares stones only, which is sound because its analysis engine zeroes
- * the pre-root history. When this port is asked to keep that history instead, a
- * symmetry that moves one of the last five moves changes the network input and is
- * not a real duplicate, so it has to fix those moves too.
- */
-export function computeValidRootSymmetries(args: {
-  stones: Uint8Array;
-  koPoint: number;
-  recentMoves: RecentMove[];
-  ignorePreRootHistory?: boolean;
-}): number[] {
-  const valid = [0];
-  // A ko ban is not symmetric, so nothing may be treated as a duplicate.
-  if (args.koPoint >= 0) return valid;
-
-  const map = getSymPosMap();
-  for (let sym = 1; sym < NUM_SYMMETRIES; sym++) {
-    const off = sym * BOARD_AREA;
-    let ok = true;
-    for (let p = 0; p < BOARD_AREA; p++) {
-      if (args.stones[p] !== args.stones[map[off + p]!]) {
-        ok = false;
-        break;
-      }
-    }
-    if (ok && args.ignorePreRootHistory !== true) {
-      for (const m of args.recentMoves) {
-        if (m.move === PASS_MOVE) continue;
-        if (map[off + m.move] !== m.move) {
-          ok = false;
-          break;
-        }
-      }
-    }
-    if (ok) valid.push(sym);
-  }
-  return valid;
-}
-
-/**
- * Marks every root move that is a symmetric copy of another, keeping one
- * representative. The iteration order is KataGo's, which keeps the representative
- * in the upper right for black:
- * https://senseis.xmp.net/?PlayingTheFirstMoveInTheUpperRightCorner
- */
-export function markSymmetryDuplicateMoves(
-  validSymmetries: number[],
-  nextPlayerIsBlack: boolean
-): Uint8Array | null {
-  if (validSymmetries.length <= 1) return null;
-  const map = getSymPosMap();
-  const dup = new Uint8Array(BOARD_AREA);
-  const n = BOARD_SIZE;
-
-  const markFrom = (loc: number) => {
-    if (dup[loc] === 1) return;
-    for (const sym of validSymmetries) {
-      if (sym === 0) continue;
-      const symLoc = map[sym * BOARD_AREA + loc]!;
-      if (symLoc !== loc) dup[symLoc] = 1;
-    }
-  };
-
-  if (nextPlayerIsBlack) {
-    for (let x = n - 1; x >= 0; x--) {
-      for (let y = 0; y < n; y++) markFrom(y * n + x);
-    }
-  } else {
-    for (let x = 0; x < n; x++) {
-      for (let y = n - 1; y >= 0; y--) markFrom(y * n + x);
-    }
-  }
-  return dup;
 }
 
 /**
@@ -742,7 +614,7 @@ const NO_RESULT_UTILITY_FOR_WHITE: number = 0.0;
 
 function computeRecentScoreCenter(expectedWhiteScore: number): number {
   let recentScoreCenter = expectedWhiteScore * (1.0 - DYNAMIC_SCORE_CENTER_ZERO_WEIGHT);
-  const cap = getSqrtBoardArea() * DYNAMIC_SCORE_CENTER_SCALE;
+  const cap = BOARD_SIZE * DYNAMIC_SCORE_CENTER_SCALE;
   if (recentScoreCenter > expectedWhiteScore + cap) recentScoreCenter = expectedWhiteScore + cap;
   if (recentScoreCenter < expectedWhiteScore - cap) recentScoreCenter = expectedWhiteScore - cap;
   return recentScoreCenter;
@@ -765,7 +637,7 @@ function computeBlackUtilityFromEval(args: {
   blackScoreStdev: number;
   recentScoreCenter: number; // white score center
 }): number {
-  const sqrtBoardArea = getSqrtBoardArea();
+  const sqrtBoardArea = BOARD_SIZE;
   const blackLossProb = 1.0 - args.blackWinProb - args.blackNoResultProb;
   const whiteWinLossValue = blackLossProb - args.blackWinProb;
   const whiteScoreMean = -args.blackScoreMean;
@@ -777,6 +649,7 @@ function computeBlackUtilityFromEval(args: {
     center: 0.0,
     scale: 2.0,
     sqrtBoardArea,
+    boardSize: BOARD_SIZE,
   });
 
   const dynamicScoreValue =
@@ -788,6 +661,7 @@ function computeBlackUtilityFromEval(args: {
           center: args.recentScoreCenter,
           scale: DYNAMIC_SCORE_CENTER_SCALE,
           sqrtBoardArea,
+          boardSize: BOARD_SIZE,
         });
 
   const whiteUtility =
@@ -941,72 +815,6 @@ function downweightBadChildrenAndNormalizeWeight(args: {
   for (const s of stats) s.weightAdjusted *= factor;
 }
 
-// KataGo subtreeValueBias defaults (cpp/program/setup.cpp): factor 0.45, weight
-// exponent 0.85. The idea is that if the search keeps finding a node's own network
-// evaluation too optimistic, positions that look locally the same are probably
-// getting the same error, so correct them all by the average of what was found.
-let SUBTREE_VALUE_BIAS_FACTOR: number = 0.45;
-const SUBTREE_VALUE_BIAS_WEIGHT_EXPONENT = 0.85;
-const SUBTREE_BIAS_PATTERN_RADIUS = 2; // KataGo hashes a 5x5 window
-
-type SubtreeBiasEntry = { deltaUtilitySum: number; weightSum: number };
-
-/**
- * KataGo's SubtreeValueBiasTable, keyed the same way: the move that led here, the
- * move before that, the local 5x5 pattern (with atari marked) on the board before
- * the move, whose turn it is, and any ko ban.
- */
-class SubtreeBiasTable {
-  private entries = new Map<string, SubtreeBiasEntry>();
-  epoch = 0;
-
-  get(key: string): SubtreeBiasEntry {
-    let entry = this.entries.get(key);
-    if (!entry) {
-      entry = { deltaUtilitySum: 0, weightSum: 0 };
-      this.entries.set(key, entry);
-    }
-    return entry;
-  }
-
-  /** Drops everything, e.g. when the search re-roots and old nodes fall away. */
-  reset(): void {
-    this.entries.clear();
-    this.epoch++;
-  }
-}
-
-function buildSubtreeBiasKey(args: {
-  stones: Uint8Array; // board BEFORE the move
-  libertyMap: Uint8Array;
-  move: number;
-  parentMove: number;
-  koPoint: number;
-  pla: StoneColor;
-}): string {
-  const { stones, libertyMap, move, parentMove, koPoint, pla } = args;
-  let key = `${pla}|${parentMove}|${move}|${koPoint}`;
-  if (move === PASS_MOVE) return key;
-
-  const x = move % BOARD_SIZE;
-  const y = (move / BOARD_SIZE) | 0;
-  const r = SUBTREE_BIAS_PATTERN_RADIUS;
-  const dxMin = Math.max(-r, -x);
-  const dxMax = Math.min(r, BOARD_SIZE - 1 - x);
-  const dyMin = Math.max(-r, -y);
-  const dyMax = Math.min(r, BOARD_SIZE - 1 - y);
-  key += '|';
-  for (let dy = dyMin; dy <= dyMax; dy++) {
-    for (let dx = dxMin; dx <= dxMax; dx++) {
-      const pos = (y + dy) * BOARD_SIZE + (x + dx);
-      const color = stones[pos] as StoneColor;
-      key += color === EMPTY ? '.' : color === BLACK ? (libertyMap[pos] === 1 ? 'b' : 'B') : libertyMap[pos] === 1 ? 'w' : 'W';
-    }
-    key += '/';
-  }
-  return key;
-}
-
 // KataGo useUncertainty defaults (cpp/program/setup.cpp): on, coeff 0.25, exponent 1,
 // max weight 8. Only nets from model version 10 on predict the shortterm errors this
 // needs; with older nets every visit keeps weight 1, exactly as in KataGo.
@@ -1017,7 +825,7 @@ const UNCERTAINTY_MAX_WEIGHT = 8.0;
 
 /** KataGo Search::getApproxScoreUtilityDerivative. */
 function approxScoreUtilityDerivative(whiteScoreMean: number, recentScoreCenter: number): number {
-  const sqrtBoardArea = getSqrtBoardArea();
+  const sqrtBoardArea = BOARD_SIZE;
   const staticDerivative = whiteDScoreValueDScoreSmoothNoDrawAdjust({
     finalWhiteMinusBlackScore: whiteScoreMean,
     center: 0.0,
@@ -1164,7 +972,7 @@ function recomputeNodeStats(node: Node): void {
   const ownWeight = node.nnWeight;
   let ownUtility = node.nnUtility ?? 0;
   const biasEntry = node.biasEntry;
-  if (SUBTREE_VALUE_BIAS_FACTOR !== 0 && biasEntry) {
+  if (getSubtreeValueBiasFactor() !== 0 && biasEntry) {
     if (currentTotalChildWeight > 1e-10) {
       const utilityChildren = utilitySum / currentTotalChildWeight;
       const biasWeight = Math.pow(origTotalChildWeight, SUBTREE_VALUE_BIAS_WEIGHT_EXPONENT);
@@ -1176,7 +984,7 @@ function recomputeNodeStats(node: Node): void {
       node.lastBiasWeight = biasWeight;
     }
     if (biasEntry.weightSum > 0.001) {
-      ownUtility += (SUBTREE_VALUE_BIAS_FACTOR * biasEntry.deltaUtilitySum) / biasEntry.weightSum;
+      ownUtility += (getSubtreeValueBiasFactor() * biasEntry.deltaUtilitySum) / biasEntry.weightSum;
     }
   }
   valueSum += ownWeight * node.nnValue;
@@ -1474,7 +1282,7 @@ const ANALYSIS_TUNING: SearchTuning = {
   valueWeightExponent: VALUE_WEIGHT_EXPONENT,
   useNoisePruning: USE_NOISE_PRUNING,
   useUncertainty: USE_UNCERTAINTY,
-  subtreeValueBiasFactor: SUBTREE_VALUE_BIAS_FACTOR,
+  subtreeValueBiasFactor: getSubtreeValueBiasFactor(),
 };
 
 /** Test seam. Call `resetSearchTuning` afterwards; the app never calls either. */
@@ -1489,7 +1297,7 @@ export function setSearchTuningForTest(tuning: Partial<SearchTuning>): void {
   VALUE_WEIGHT_EXPONENT = next.valueWeightExponent;
   USE_NOISE_PRUNING = next.useNoisePruning;
   USE_UNCERTAINTY = next.useUncertainty;
-  SUBTREE_VALUE_BIAS_FACTOR = next.subtreeValueBiasFactor;
+  setSubtreeValueBiasFactor(next.subtreeValueBiasFactor);
 }
 
 export function resetSearchTuning(): void {
@@ -1518,38 +1326,6 @@ function exploreScaling(totalChildWeight: number, parentUtilityStdevFactor: numb
     Math.sqrt(totalChildWeight + TOTALCHILDWEIGHT_PUCT_OFFSET) *
     parentUtilityStdevFactor
   );
-}
-
-class Rand {
-  private spare: number | null = null;
-
-  nextBool(p: number): boolean {
-    return Math.random() < p;
-  }
-
-  nextDouble(): number {
-    return Math.random();
-  }
-
-  nextGaussian(): number {
-    if (this.spare !== null) {
-      const v = this.spare;
-      this.spare = null;
-      return v;
-    }
-
-    let u = 0;
-    let v = 0;
-    let s = 0;
-    while (s === 0 || s >= 1) {
-      u = Math.random() * 2 - 1;
-      v = Math.random() * 2 - 1;
-      s = u * u + v * v;
-    }
-    const mul = Math.sqrt((-2 * Math.log(s)) / s);
-    this.spare = v * mul;
-    return u * mul;
-  }
 }
 
 /**
@@ -1888,7 +1664,7 @@ function scoreUtilityDiffBlack(
   if (whiteDelta === 0) return 0;
   const whiteScoreMean = -blackScoreMean;
   const whiteScoreStdev = getScoreStdev(whiteScoreMean, blackScoreMeanSq);
-  const sqrtBoardArea = getSqrtBoardArea();
+  const sqrtBoardArea = BOARD_SIZE;
 
   const staticDiff =
     expectedWhiteScoreValue({
@@ -1897,8 +1673,9 @@ function scoreUtilityDiffBlack(
       center: 0.0,
       scale: 2.0,
       sqrtBoardArea,
+      boardSize: BOARD_SIZE,
     }) -
-    expectedWhiteScoreValue({ whiteScoreMean, whiteScoreStdev, center: 0.0, scale: 2.0, sqrtBoardArea });
+    expectedWhiteScoreValue({ whiteScoreMean, whiteScoreStdev, center: 0.0, scale: 2.0, sqrtBoardArea, boardSize: BOARD_SIZE });
 
   const dynamicDiff =
     DYNAMIC_SCORE_UTILITY_FACTOR === 0
@@ -1909,6 +1686,7 @@ function scoreUtilityDiffBlack(
           center: recentScoreCenter,
           scale: DYNAMIC_SCORE_CENTER_SCALE,
           sqrtBoardArea,
+          boardSize: BOARD_SIZE,
         }) -
         expectedWhiteScoreValue({
           whiteScoreMean,
@@ -1916,6 +1694,7 @@ function scoreUtilityDiffBlack(
           center: recentScoreCenter,
           scale: DYNAMIC_SCORE_CENTER_SCALE,
           sqrtBoardArea,
+          boardSize: BOARD_SIZE,
         });
 
   const whiteDiff = staticDiff * STATIC_SCORE_UTILITY_FACTOR + dynamicDiff * DYNAMIC_SCORE_UTILITY_FACTOR;
@@ -2564,73 +2343,6 @@ function getPvForEdge(
   };
   edge.pvCache = cached;
   return cached;
-}
-
-const NUM_SYMMETRIES = 8;
-let symPosMapBoardArea = 0;
-let SYM_POS_MAP: Int16Array<ArrayBufferLike> = new Int16Array(0);
-
-const buildSymPosMap = (): Int16Array<ArrayBufferLike> => {
-  const n = BOARD_SIZE;
-  const map = new Int16Array(NUM_SYMMETRIES * BOARD_AREA);
-  for (let sym = 0; sym < NUM_SYMMETRIES; sym++) {
-    const symOff = sym * BOARD_AREA;
-    const mirror = sym >= 4;
-    const rot = sym & 3;
-    for (let y = 0; y < n; y++) {
-      for (let x = 0; x < n; x++) {
-        const sx = mirror ? n - 1 - x : x;
-        const sy = y;
-        let tx: number;
-        let ty: number;
-        if (rot === 0) {
-          tx = sx;
-          ty = sy;
-        } else if (rot === 1) {
-          tx = sy;
-          ty = n - 1 - sx;
-        } else if (rot === 2) {
-          tx = n - 1 - sx;
-          ty = n - 1 - sy;
-        } else {
-          tx = n - 1 - sy;
-          ty = sx;
-        }
-        map[symOff + y * n + x] = ty * n + tx;
-      }
-    }
-  }
-  return map;
-};
-
-const getSymPosMap = (): Int16Array<ArrayBufferLike> => {
-  const expectedSize = NUM_SYMMETRIES * BOARD_AREA;
-  if (symPosMapBoardArea !== BOARD_AREA || SYM_POS_MAP.length !== expectedSize) {
-    SYM_POS_MAP = buildSymPosMap();
-    symPosMapBoardArea = BOARD_AREA;
-  }
-  return SYM_POS_MAP;
-};
-
-function clampRootSymmetrySamples(samples?: number): number {
-  if (typeof samples !== 'number' || !Number.isFinite(samples)) return 1;
-  return Math.max(1, Math.min(NUM_SYMMETRIES, Math.floor(samples)));
-}
-
-/**
- * How many symmetries to average at the root.
- *
- * The net is only approximately symmetry-equivariant, so a single view of a position
- * carries real noise -- on the shipped 6-block net that is worth up to ~0.25 of ownership
- * on a point. Averaging several views cancels most of it. It costs one extra batched
- * evaluation per position, which is small next to the hundreds a search does, so it is
- * only skipped on the pure-JS 'cpu' fallback where a single forward pass already
- * dominates.
- */
-export function rootSymmetrySamplesForBackend(backend: string): number {
-  if (backend === 'webgpu') return NUM_SYMMETRIES;
-  if (backend === 'wasm') return 4;
-  return 1;
 }
 
 function averageRootEvals(evals: NeuralEval[], outputScaleMultiplier: number): NeuralEval {
@@ -3904,7 +3616,7 @@ export class MctsSearch {
           // the simulated board still shows that position.
           const existingChild = e.child;
           const needsBiasKey =
-            SUBTREE_VALUE_BIAS_FACTOR !== 0 &&
+            getSubtreeValueBiasFactor() !== 0 &&
             (!existingChild || existingChild.biasEpoch !== this.subtreeBiasTable.epoch);
           const biasKey = needsBiasKey
             ? buildSubtreeBiasKey({

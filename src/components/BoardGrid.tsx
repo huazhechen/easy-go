@@ -64,7 +64,9 @@ export function BoardGrid({
   const maxHintRate = hintRates.length ? Math.max(...hintRates) : 1;
   const showScanline = !scanlineDone && thinkingActive;
 
-  const hintAt = (x: number, y: number): CandidateMove | undefined => hints.find((move) => move.x === x && move.y === y);
+  // Precompute a point -> (hint, rank) lookup so each intersection can read
+  // its candidate in constant time instead of scanning the small hints array.
+  const hintByPoint = new Map(hints.map((move, rank) => [`${move.x},${move.y}`, { move, rank }] as const));
 
   // Show a translucent stone of the side to move wherever a real click would
   // actually place one: the point must be empty, it must be the human's turn,
@@ -126,7 +128,9 @@ export function BoardGrid({
         const x = index % boardSize;
         const y = Math.floor(index / boardSize);
         const stone = board[y]?.[x];
-        const hint = hintsVisible ? hintAt(x, y) : undefined;
+        const hintEntry = hintsVisible ? hintByPoint.get(`${x},${y}`) : undefined;
+        const hint = hintEntry?.move;
+        const hintRank = hintEntry?.rank ?? 0;
         const hintSideWinRate = hint ? (currentPlayer === 'white' ? 1 - hint.winRate : hint.winRate) : 0;
         const hintAlpha = hint
           ? 0.35 + (maxHintRate === minHintRate ? 0.6 : ((hintSideWinRate - minHintRate) / (maxHintRate - minHintRate)) * 0.6)
@@ -146,7 +150,7 @@ export function BoardGrid({
             aria-label={`${x + 1},${y + 1}`}
           >
             {hint && !stone && (
-              <span className={`hint-dot rank-${hints.findIndex((move) => move === hint)}${hintsSearching ? ' searching' : ''}`} style={{ backgroundColor: `rgba(211,47,47,${hintAlpha.toFixed(3)})` }}>{percent(hintSideWinRate)}</span>
+              <span className={`hint-dot rank-${hintRank}${hintsSearching ? ' searching' : ''}`} style={{ backgroundColor: `rgba(211,47,47,${hintAlpha.toFixed(3)})` }}>{percent(hintSideWinRate)}</span>
             )}
             {stone && <span className={`board-stone ${stone === 'black' ? 'black-stone' : 'white-stone'}`} />}
             {currentMove?.x === x && currentMove?.y === y && <span className="last-move-marker" />}

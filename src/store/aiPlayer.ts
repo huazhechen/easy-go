@@ -3,6 +3,7 @@ import { ENGINE_MAX_TIME_MS } from '../engine/katago/limits';
 import { getAnimationNow } from '../utils/animationFrame';
 import { analysisQueue } from '../utils/analysisQueue';
 import { continuousEarlyStopByNodeId, getAiRequestEpoch, sleep } from './analysis';
+import { getBoardSizeFromBoard } from './gameTree';
 import { checkMctsEarlyStop, createMctsEarlyStopState } from './mctsEarlyStop';
 
 /** The slice of the game store the AI player reads and drives. */
@@ -79,6 +80,7 @@ export function runAiMove(
   const thinkingMs = Math.max(25, Math.min(initial.settings.katagoMaxTimeMs, ENGINE_MAX_TIME_MS));
   // The AI turn may keep deepening even when the hint search settled this node.
   continuousEarlyStopByNodeId.delete(nodeId);
+  const boardSize = getBoardSizeFromBoard(initial.currentNode.gameState.board);
   setStore({ isAiThinking: true, isAnalysisMode: true });
   if (!initial.isContinuousAnalysis) getStore().toggleContinuousAnalysis();
   void (async () => {
@@ -90,7 +92,7 @@ export function runAiMove(
       if (!force && (!latest.isAiPlaying || latest.aiColor !== playerAtStart)) return;
       const analysis = latest.currentNode.analysis;
       if (analysis?.moves?.length) {
-        const check = checkMctsEarlyStop(stopState, analysis);
+        const check = checkMctsEarlyStop(stopState, analysis, boardSize);
         stopState = check.nextState;
         if (check.shouldStop && check.best) {
           setStore({ isAiThinking: false });

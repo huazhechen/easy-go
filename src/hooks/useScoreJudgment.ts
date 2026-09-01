@@ -30,6 +30,7 @@ export function useScoreJudgment() {
 
   const current = quickEvalData?.nodeId === positionKey ? quickEvalData.result : null;
   const visible = scoreMode !== 'off' && current !== null && !dismissed;
+  const territoryVisible = scoreMode !== 'off' && current !== null;
   const result: ScoreResult | null = current
     ? formatScoreResult(countTerritoryPoints(current.territory, capturedBlack, capturedWhite, komi))
     : null;
@@ -71,7 +72,7 @@ export function useScoreJudgment() {
     cycleScoreMode,
     result,
     resultVisible: visible,
-    territoryVisible: visible,
+    territoryVisible,
     dialogOpen,
     dismissScore,
     endGame,

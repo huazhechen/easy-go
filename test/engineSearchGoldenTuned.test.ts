@@ -1,3 +1,8 @@
+/**
+ * Model/search cases that load the KataGo harness and run MCTS; excluded from
+ * the default test run (see `npm run test:perf`).
+ * @module-tag perf
+ */
 import { afterEach, describe, expect, it } from 'vitest';
 import { MctsSearch, resetSearchTuning, setSearchTuningForTest } from '../src/engine/katago/analyzeMcts';
 import { setBoardSize } from '../src/engine/katago/fastBoard';

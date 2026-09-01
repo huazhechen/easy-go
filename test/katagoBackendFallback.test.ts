@@ -106,6 +106,7 @@ describe('KataGo backend fallback policy', () => {
 
   it('wires the warm-up retry through the worker model load path', () => {
     const workerSource = readFileSync('src/engine/katago/worker.ts', 'utf8');
+    const modelLoadingSource = readFileSync('src/engine/katago/modelLoading.ts', 'utf8');
 
     expect(workerSource).toContain('installModel(await createWarmedModel(parsed), parsed, modelUrl);');
     expect(workerSource).toContain('getKataGoWarmupFallbackBackend({');
@@ -117,9 +118,10 @@ describe('KataGo backend fallback policy', () => {
     expect(workerSource).toContain('B6_MODEL_URL');
     expect(workerSource).toContain('scheduleBackgroundModelUpgrade');
     expect(workerSource).toContain('fetchModelBytes');
-    expect(workerSource).toContain('readValidatedCachedModel');
-    expect(workerSource).toContain('md5Hex');
-    expect(workerSource).toContain('Model checksum mismatch');
-    expect(workerSource).toContain('normalizeModelBytes');
+    expect(workerSource).toContain("from './modelLoading'");
+    expect(modelLoadingSource).toContain('readValidatedCachedModel');
+    expect(modelLoadingSource).toContain('md5Hex');
+    expect(modelLoadingSource).toContain('Model checksum mismatch');
+    expect(modelLoadingSource).toContain('normalizeModelBytes');
   });
 });

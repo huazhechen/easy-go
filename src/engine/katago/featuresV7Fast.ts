@@ -1,6 +1,7 @@
 import type { GameRules, Player } from '../../types';
 import { getOpponent } from '../../utils/gameLogic';
-import { BLACK, WHITE, EMPTY, PASS_MOVE, BOARD_SIZE, computeLibertyMap, computeAreaMapV7KataGo, type StoneColor } from './fastBoard';
+import { EMPTY, PASS_MOVE, BOARD_SIZE, computeLibertyMap, computeAreaMapV7KataGo, type StoneColor } from './fastBoard';
+import { playerToColor } from './color';
 
 const INPUT_SPATIAL_CHANNELS_V7 = 22;
 // KataGo NNPos::KOMI_CLIP_RADIUS.
@@ -18,10 +19,6 @@ export type RecentMove = {
 };
 
 const idxNHWC = (x: number, y: number, c: number) => ((y * BOARD_SIZE + x) * INPUT_SPATIAL_CHANNELS_V7 + c);
-
-function playerToColor(p: Player): StoneColor {
-  return p === 'black' ? BLACK : WHITE;
-}
 
 export function fillInputsV7Fast(args: {
   stones: Uint8Array; // 0 empty, 1 black, 2 white

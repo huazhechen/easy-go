@@ -64,7 +64,7 @@ export function useModelDownload(onDownloaded: (blobUrl: string) => void) {
       if (!verifyModelMd5(normalized, tier.md5)) {
         throw new Error('模型校验失败：下载内容与官方 MD5 不一致，请重试');
       }
-      const cached = await writeCachedModel(modelCacheKeyForTier('b18'), normalized);
+      const cached = await writeCachedModel(modelCacheKeyForTier('b18'), normalized, tier.md5);
       onDownloaded(objectUrlForModelBytes(normalized));
       setDownloadPhase('done');
       if (!cached) setDownloadError('模型已下载，但未能写入本地缓存，本次会话仍可使用。');

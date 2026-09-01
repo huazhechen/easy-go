@@ -1,13 +1,11 @@
-import type { BoardSize, GameRules, GameSettings, KataGoBackendPreference } from '../types';
+import type { GameRules, GameSettings, KataGoBackendPreference } from '../types';
 import { DEFAULT_BOARD_SIZE } from '../types';
-import { getMaxHandicap, normalizeBoardSize } from '../utils/boardSize';
-import { getPreferredAppLocaleId, isAppLocaleId } from '../utils/locales';
 import { publicUrl } from '../utils/publicUrl';
 import { readLocalStorage, writeLocalStorage } from '../utils/storage';
+import { LEGACY_SETTINGS_STORAGE_KEYS, SETTINGS_STORAGE_KEY } from '../utils/storageKeys';
 import { defaultModelUrl, KATAGO_RECOMMENDED_MODEL_URL, KATAGO_SMALL_MODEL_PATH } from '../engine/katago/modelDefaults';
+import { DEFAULT_KATAGO_BATCH_SIZE } from '../engine/katago/limits';
 
-export const SETTINGS_STORAGE_KEY = 'easy-go:settings:v3';
-const LEGACY_SETTINGS_STORAGE_KEYS = ['easy-go:settings:v2', 'easy-go:settings:v1'] as const;
 const OLD_DEFAULT_KATAGO_VISITS = 500;
 export const DEFAULT_KATAGO_VISITS = 5000;
 
@@ -70,6 +68,11 @@ const loadStoredSettings = (): Partial<GameSettings> | null => {
     for (const overlayKey of ['analysisShowChildren', 'analysisShowEval', 'analysisShowHints', 'analysisShowPolicy', 'analysisShowOwnership']) {
       delete (parsed as Record<string, unknown>)[overlayKey];
     }
+    // These fields were moved out of persisted settings; drop any legacy copies
+    // so they cannot linger in the serialized object.
+    for (const removedKey of ['defaultBoardSize', 'defaultHandicap']) {
+      delete (parsed as Record<string, unknown>)[removedKey];
+    }
     // An uploaded human net lives in a blob: URL that dies with the page, so a
     // stored one would only produce a failing fetch on the next load.
     if ('katagoModelUrl' in parsed) {
@@ -94,25 +97,6 @@ const loadStoredSettings = (): Partial<GameSettings> | null => {
     if ((parsed as { katagoVisits?: unknown }).katagoVisits === OLD_DEFAULT_KATAGO_VISITS) {
       (parsed as { katagoVisits: number }).katagoVisits = DEFAULT_KATAGO_VISITS;
     }
-    if ('appLocale' in parsed) {
-      if (!isAppLocaleId((parsed as { appLocale?: unknown }).appLocale)) {
-        delete (parsed as { appLocale?: unknown }).appLocale;
-      }
-    }
-    if ('defaultBoardSize' in parsed) {
-      const sizeRaw = (parsed as { defaultBoardSize?: unknown }).defaultBoardSize;
-      const sizeNum = typeof sizeRaw === 'number' ? sizeRaw : Number.parseInt(String(sizeRaw ?? ''), 10);
-      (parsed as { defaultBoardSize: BoardSize }).defaultBoardSize = normalizeBoardSize(sizeNum, DEFAULT_BOARD_SIZE);
-    }
-    if ('defaultHandicap' in parsed) {
-      const size = (parsed as { defaultBoardSize?: BoardSize }).defaultBoardSize ?? DEFAULT_BOARD_SIZE;
-      const max = getMaxHandicap(size);
-      const raw = (parsed as { defaultHandicap?: unknown }).defaultHandicap;
-      const num = typeof raw === 'number' ? raw : Number.parseInt(String(raw ?? ''), 10);
-      (parsed as { defaultHandicap: number }).defaultHandicap = Number.isFinite(num)
-        ? Math.max(0, Math.min(Math.floor(num), max))
-        : 0;
-    }
     return parsed as Partial<GameSettings>;
   } catch {
     return null;
@@ -135,10 +119,7 @@ export const rulesToSgfRu = (rules: GameRules): string => {
 };
 
 export const defaultSettings: GameSettings = {
-  appLocale: 'en',
   soundEnabled: true,
-  defaultBoardSize: DEFAULT_BOARD_SIZE,
-  defaultHandicap: 0,
   gameRules: 'japanese',
   katagoModelUrl: defaultModelUrl(),
   katagoBackend: 'webgpu',
@@ -146,7 +127,7 @@ export const defaultSettings: GameSettings = {
   // Continuous recommendation search starts at 32 visits; this is also the
   // default B10 tier's per-move thinking time (see modelDefaults).
   katagoMaxTimeMs: 2000,
-  katagoBatchSize: 16,
+  katagoBatchSize: DEFAULT_KATAGO_BATCH_SIZE,
   katagoMaxChildren: DEFAULT_BOARD_SIZE * DEFAULT_BOARD_SIZE,
   katagoTopK: 10,
   katagoReuseTree: true,
@@ -161,6 +142,8 @@ export const defaultSettings: GameSettings = {
 
 export const initialSettings: GameSettings = {
   ...defaultSettings,
-  appLocale: getPreferredAppLocaleId(),
   ...(loadStoredSettings() ?? {}),
+  // Batch size is runtime-only and never restored from a previously stored
+  // settings object, so a stale value cannot alter search behaviour.
+  katagoBatchSize: DEFAULT_KATAGO_BATCH_SIZE,
 };

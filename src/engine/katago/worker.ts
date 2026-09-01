@@ -1,37 +1,34 @@
 /// <reference lib="webworker" />
 
 import * as tf from '@tensorflow/tfjs';
-import '@tensorflow/tfjs-backend-webgpu';
-import '@tensorflow/tfjs-backend-wasm';
-import { setThreadsCount, setWasmPaths } from '@tensorflow/tfjs-backend-wasm';
 
-import type { KataGoAnalysisPayload, KataGoWorkerRequest, KataGoWorkerResponse } from './types';
-import { looksLikeMarkup, modelResponseError } from './modelResponse';
+import type {
+  KataGoAnalysisPayload,
+  KataGoAnalyzeRequest,
+  KataGoWorkerRequest,
+  KataGoWorkerResponse,
+} from './types';
 import type { GameRules, KataGoBackendPreference } from '../../types';
 import { publicUrl } from '../../utils/publicUrl';
 import { getAnimationNow } from '../../utils/animationFrame';
 import { parseKataGoModelV8 } from './loadModelV8';
 import { KataGoModelV8Tf } from './modelV8';
 import { ENGINE_MAX_TIME_MS, ENGINE_MAX_VISITS } from './limits';
-import { MctsSearch, rootSymmetrySamplesForBackend, type OwnershipMode } from './analyzeMcts';
+import { MctsSearch, type OwnershipMode } from './analyzeMcts';
+import { rootSymmetrySamplesForBackend } from './symmetry';
+import { initBackend } from './backendInit';
+import { createWarmedModel } from './modelWarmup';
+import { fetchModelBytes } from './modelLoading';
 import {
   getKataGoWarmupFallbackBackend,
   normalizeKataGoBackendPreference,
   shouldCacheKataGoFallbackForRequest,
 } from './backendFallback';
 import { BOARD_AREA, BOARD_SIZE, PASS_MOVE, setBoardSize } from './fastBoard';
-import { md5Hex } from '../../utils/md5';
 import {
-  expectedModelMd5,
   KATAGO_MODEL_TIERS,
   KATAGO_SMALL_MODEL_PATH,
 } from './modelDefaults';
-import {
-  cacheKeyForModelUrl,
-  normalizeModelBytes,
-  readValidatedCachedModel,
-  writeCachedModel,
-} from './modelCache';
 
 let model: KataGoModelV8Tf | null = null;
 let loadedModelName: string | undefined;
@@ -53,8 +50,7 @@ const isDefaultB10ModelUrl = (url: string): boolean => B10_MODEL_URLS.includes(u
 let scratchBoardSize = BOARD_SIZE;
 type ParsedKataGoModelV8 = ReturnType<typeof parseKataGoModelV8>;
 
-let search: MctsSearch | null = null;
-let searchKey: {
+interface SearchKey {
   positionId: string;
   positionKey: string | null;
   modelUrl: string;
@@ -70,9 +66,61 @@ let searchKey: {
   rules: GameRules;
   nnRandomize: boolean;
   conservativePass: boolean;
-} | null = null;
+}
+
+let search: MctsSearch | null = null;
+let searchKey: SearchKey | null = null;
 let latestAnalyzeId = 0;
 let latestQuickEvalId = 0;
+
+function makeSearchKey(args: {
+  msg: KataGoAnalyzeRequest;
+  boardSize: number;
+  maxChildren: number;
+  ownershipMode: OwnershipMode;
+  wideRootNoise: number;
+  rootPolicyTemperature: number;
+  fillDameBeforePass: boolean;
+  rootSymmetrySamples: number;
+  rules: GameRules;
+  nnRandomize: boolean;
+  conservativePass: boolean;
+}): SearchKey {
+  return {
+    positionId: args.msg.positionId!,
+    positionKey: args.msg.positionKey ?? null,
+    modelUrl: args.msg.modelUrl,
+    boardSize: args.boardSize,
+    maxChildren: args.maxChildren,
+    ownershipMode: args.ownershipMode,
+    komi: args.msg.komi,
+    currentPlayer: args.msg.currentPlayer,
+    wideRootNoise: args.wideRootNoise,
+    rootPolicyTemperature: args.rootPolicyTemperature,
+    fillDameBeforePass: args.fillDameBeforePass,
+    rootSymmetrySamples: args.rootSymmetrySamples,
+    rules: args.rules,
+    nnRandomize: args.nnRandomize,
+    conservativePass: args.conservativePass,
+  };
+}
+
+function collectTransferables(analysis: {
+  ownership?: unknown;
+  ownershipStdev?: unknown;
+  policy?: unknown;
+  moves?: readonly { ownership?: unknown }[];
+}): Transferable[] {
+  const transfer: Transferable[] = [];
+  const push = (value?: unknown) => {
+    if (value && ArrayBuffer.isView(value)) transfer.push(value.buffer);
+  };
+  push(analysis.ownership);
+  push(analysis.ownershipStdev);
+  push(analysis.policy);
+  for (const move of analysis.moves ?? []) push(move.ownership);
+  return transfer;
+}
 
 // TensorFlow promises resume as microtasks. An extended search that only awaits
 // those promises can starve worker message events, preventing a newer position
@@ -87,49 +135,6 @@ function ensureBoardSizeForWorker(boardSize: number): void {
   scratchBoardSize = BOARD_SIZE;
   search = null;
   searchKey = null;
-}
-
-async function initWasmBackend(): Promise<void> {
-  try {
-    // Vite serves `public/` at the site root.
-    setWasmPaths(publicUrl('tfjs/'));
-    // Use a reasonable thread count for XNNPACK when cross-origin isolated (SharedArrayBuffer).
-    // Without COOP/COEP headers, browsers disable threads and TFJS will fall back to single-threaded wasm.
-    const isCrossOriginIsolated = (globalThis as unknown as { crossOriginIsolated?: boolean }).crossOriginIsolated === true;
-    if (isCrossOriginIsolated) {
-      const hc = (globalThis as unknown as { navigator?: { hardwareConcurrency?: number } }).navigator?.hardwareConcurrency ?? 1;
-      const numThreads = Math.max(1, Math.min(8, Math.floor(hc)));
-      setThreadsCount(numThreads);
-    }
-    await tf.setBackend('wasm');
-    await tf.ready();
-    return;
-  } catch {
-    // Fall through to CPU below.
-  }
-
-  await tf.setBackend('cpu');
-  await tf.ready();
-}
-
-async function initBackend(preferredBackend: KataGoBackendPreference): Promise<void> {
-  if (preferredBackend === 'cpu') {
-    await tf.setBackend('cpu');
-    await tf.ready();
-    return;
-  }
-
-  if (preferredBackend === 'webgpu') {
-    try {
-      await tf.setBackend('webgpu');
-      await tf.ready();
-      return;
-    } catch {
-      // Fall back to WASM/CPU if WebGPU isn't available or fails to initialize.
-    }
-  }
-
-  await initWasmBackend();
 }
 
 async function ensureBackend(backend?: KataGoBackendPreference): Promise<void> {
@@ -162,35 +167,6 @@ async function ensureBackend(backend?: KataGoBackendPreference): Promise<void> {
   await backendPromise;
 }
 
-async function warmupModel(candidate: KataGoModelV8Tf): Promise<void> {
-  const spatial = tf.zeros([1, 19, 19, 22], 'float32') as tf.Tensor4D;
-  const global = tf.zeros([1, 19], 'float32') as tf.Tensor2D;
-  let out: ReturnType<KataGoModelV8Tf['forwardValueOnly']> | null = null;
-  try {
-    out = candidate.forwardValueOnly(spatial, global);
-    const results = await Promise.allSettled([out.value.data(), out.scoreValue.data()]);
-    for (const result of results) {
-      if (result.status === 'rejected') throw result.reason;
-    }
-  } finally {
-    spatial.dispose();
-    global.dispose();
-    out?.value.dispose();
-    out?.scoreValue.dispose();
-  }
-}
-
-async function createWarmedModel(parsed: ParsedKataGoModelV8): Promise<KataGoModelV8Tf> {
-  const candidate = new KataGoModelV8Tf(parsed);
-  try {
-    await warmupModel(candidate);
-    return candidate;
-  } catch (err) {
-    candidate.dispose();
-    throw err;
-  }
-}
-
 function installModel(nextModel: KataGoModelV8Tf, parsed: ParsedKataGoModelV8, modelUrl: string): void {
   model?.dispose();
   model = nextModel;
@@ -210,36 +186,6 @@ async function switchToFallbackBackendForRequest(
   if (shouldCacheKataGoFallbackForRequest({ requestedBackend, fallbackBackend: tf.getBackend() })) {
     backendPreference = requestedBackend;
   }
-}
-
-/**
- * Fetches the model bytes, preferring the IndexedDB cache so a model that was
- * already downloaded once is never fetched again unless the cache version
- * changes. blob: URLs (a cached b18 served through an object URL) are already
- * in-memory and are deliberately not written back to the cache.
- */
-async function fetchModelBytes(modelUrl: string): Promise<Uint8Array> {
-  const cacheKey = cacheKeyForModelUrl(modelUrl);
-  const expectedMd5 = expectedModelMd5(modelUrl);
-  const cached = await readValidatedCachedModel(cacheKey, expectedMd5);
-  if (cached) {
-    const bytes = new Uint8Array(cached);
-    if (!looksLikeMarkup(bytes)) return bytes;
-  }
-
-  const res = await fetch(modelUrl);
-  if (!res.ok) throw new Error(`Failed to fetch model: ${res.status} ${res.statusText}`);
-  const data = normalizeModelBytes(new Uint8Array(await res.arrayBuffer()));
-  if (looksLikeMarkup(data)) throw modelResponseError(modelUrl);
-  if (expectedMd5) {
-    if (md5Hex(data) !== expectedMd5.toLowerCase()) {
-      throw new Error(`Model checksum mismatch for ${modelUrl}: expected MD5 ${expectedMd5}`);
-    }
-  }
-  if (!modelUrl.startsWith('blob:')) {
-    await writeCachedModel(cacheKey, data);
-  }
-  return data;
 }
 
 async function loadAndInstallModel(
@@ -422,13 +368,7 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
       rootVisits: 0,
       moves: [],
     };
-    const transfer: Transferable[] = [];
-    const push = (value?: unknown) => {
-      if (value && ArrayBuffer.isView(value)) transfer.push(value.buffer);
-    };
-    push(payload.ownership);
-    push(payload.ownershipStdev);
-    push(payload.policy);
+    const transfer = collectTransferables(payload);
     post(
       {
         type: 'katago:analyze_result',
@@ -559,15 +499,11 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
           });
           if (reRooted) {
             reusedSearch = true;
-            searchKey = {
-              positionId: msg.positionId,
-              positionKey: msg.positionKey ?? null,
-              modelUrl: msg.modelUrl,
+            searchKey = makeSearchKey({
+              msg,
               boardSize,
               maxChildren,
               ownershipMode,
-              komi: msg.komi,
-              currentPlayer: msg.currentPlayer,
               wideRootNoise,
               rootPolicyTemperature,
               fillDameBeforePass,
@@ -575,7 +511,7 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
               rules,
               nnRandomize,
               conservativePass,
-            };
+            });
           }
         }
       }
@@ -601,15 +537,11 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
         rootSymmetrySamples,
       });
       if (typeof msg.positionId === 'string') {
-        searchKey = {
-          positionId: msg.positionId,
-          positionKey: msg.positionKey ?? null,
-          modelUrl: msg.modelUrl,
+        searchKey = makeSearchKey({
+          msg,
           boardSize,
           maxChildren,
           ownershipMode,
-          komi: msg.komi,
-          currentPlayer: msg.currentPlayer,
           wideRootNoise,
           rootPolicyTemperature,
           fillDameBeforePass,
@@ -617,21 +549,14 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
           rules,
           nnRandomize,
           conservativePass,
-        };
+        });
       } else {
         searchKey = null;
       }
     }
 
     const postAnalysis = (analysis: ReturnType<MctsSearch['getAnalysis']>, type: 'katago:analyze_update' | 'katago:analyze_result') => {
-      const transfer: Transferable[] = [];
-      const push = (value?: unknown) => {
-        if (value && ArrayBuffer.isView(value)) transfer.push(value.buffer);
-      };
-      push(analysis.ownership);
-      push(analysis.ownershipStdev);
-      push(analysis.policy);
-      for (const move of analysis.moves) push(move.ownership);
+      const transfer = collectTransferables(analysis);
 
       post(
         {

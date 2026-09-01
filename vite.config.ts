@@ -89,6 +89,12 @@ export default defineConfig({
   },
   test: {
     exclude: [...configDefaults.exclude, '**/.external/**'],
+    tags: [
+      {
+        name: 'perf',
+        description: 'Model/engine search and benchmark cases; excluded from the default run.',
+      },
+    ],
   },
   server: {
     // Honor the PORT env var (e.g. when launched by preview tooling); fall back to Vite's default otherwise.

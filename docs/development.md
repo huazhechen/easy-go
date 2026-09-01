@@ -24,7 +24,9 @@ The Vite dev server sends the COOP/COEP headers required for threaded WASM.
 | Command | Purpose |
 | --- | --- |
 | `npm run dev` | Start Vite. Runs `copy:tfjs-wasm` and `fetch:model` first. |
-| `npm test` | Run all Vitest tests. |
+| `npm test` | Run the fast Vitest suite (basic cases only; `perf`-tagged model/search cases are skipped). |
+| `npm run test:perf` | Run the `perf` cases (KataGo model load + MCTS search/benchmark). |
+| `npm run test:all` | Run the entire Vitest suite, including `perf`. |
 | `npm run test:typecheck` | Type-check the test project. |
 | `npm run lint` | Run ESLint. |
 | `npm run build` | Run `tsc -b` and build Vite output into `dist/`. |
@@ -41,7 +43,7 @@ The Vite dev server sends the COOP/COEP headers required for threaded WASM.
 | `src/hooks/` | UI orchestration hooks (model manager, hint modes, score judgment). |
 | `src/store/` | Global game state and actions (`gameStore.ts`) with settings, game-tree, and analysis helpers. |
 | `src/engine/katago/` | Browser KataGo parser, TensorFlow.js model, worker, search, and board logic. |
-| `src/utils/` | Game logic, board size, storage, sound, analysis queue, and locale helpers. |
+| `src/utils/` | Game logic, board size, storage, sound, and analysis queue helpers. |
 | `public/` | Static assets and model files. |
 | `scripts/` | Model and TensorFlow.js WASM setup. |
 | `test/` | Vitest unit and component tests. |

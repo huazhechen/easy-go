@@ -7,7 +7,7 @@ describe('resolveAnalysisRequest', () => {
     const request = resolveAnalysisRequest(defaultSettings, 19, undefined, false);
     expect(request.visits).toBe(5000);
     expect(request.maxTimeMs).toBe(2000);
-    expect(request.batchSize).toBe(16);
+    expect(request.batchSize).toBe(1);
     expect(request.maxChildren).toBe(361);
     expect(request.topK).toBe(10);
     expect(request.analysisPvLen).toBe(15);

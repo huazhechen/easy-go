@@ -1,19 +1,18 @@
 import type { BoardState, GameRules, Move, Player } from '../../types';
 import { fillInputsV7Fast, type RecentMove } from './featuresV7Fast';
 import {
-  BLACK,
   BOARD_AREA,
   BOARD_SIZE,
   PASS_MOVE,
-  WHITE,
   computeAreaMapV7KataGoInto,
   computeLadderFeaturesV7KataGoInto,
   computeLadderedStonesV7KataGoInto,
   computeLibertyMapInto,
   playMove,
   type SimPosition,
-  type StoneColor,
 } from './fastBoard';
+import { playerToColor } from './color';
+import { boardStateToStonesInto } from './boardState';
 
 type Scratch = {
   area: number;
@@ -52,22 +51,6 @@ function getScratch(): Scratch {
     prevPrevLadderedStones: new Uint8Array(BOARD_AREA),
   };
   return scratch;
-}
-
-export function playerToColor(p: Player): StoneColor {
-  return p === 'black' ? BLACK : WHITE;
-}
-
-export function boardStateToStonesInto(board: BoardState, out: Uint8Array): void {
-  out.fill(0);
-  for (let y = 0; y < BOARD_SIZE; y++) {
-    const row = board[y];
-    for (let x = 0; x < BOARD_SIZE; x++) {
-      const v = row?.[x] ?? null;
-      if (!v) continue;
-      out[y * BOARD_SIZE + x] = v === 'black' ? BLACK : WHITE;
-    }
-  }
 }
 
 export function movesToRecentMoves(moves: Move[]): RecentMove[] {

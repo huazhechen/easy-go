@@ -30,7 +30,8 @@
 .board-loading { position:absolute; inset:0; z-index:10; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; background:#17231d66; backdrop-filter:grayscale(1) blur(1px); color:#fff; font-size:12px; font-weight:700; }.loading-track { width:46%; height:5px; border-radius:99px; background:#ffffff55; overflow:hidden; }.loading-track i { display:block; width:45%; height:100%; border-radius:inherit; background:#fff; animation:easygo-loading 1.2s ease-in-out infinite; }@keyframes easygo-loading { 0%{transform:translateX(-110%)} 100%{transform:translateX(240%)} }
 .score-mark { position:absolute; width:46%; height:46%; border-radius:3px; z-index:3; pointer-events:none; opacity:.85; }.score-mark.black { background:#123f70; }.score-mark.white { background:#f3f5f6; border:1px solid #7e8b93; }
 .hover-stone-hitbox { position:absolute; width:calc((100% - var(--board-inset-left) - var(--board-inset-right)) / var(--board-size)); height:calc((100% - var(--board-inset-top) - var(--board-inset-bottom)) / var(--board-size)); transform:translate(-50%,-50%); display:grid; place-items:center; pointer-events:none; z-index:4; }.hover-stone { width:84%; aspect-ratio:1; border-radius:50%; opacity:.45; }
-.new-game-header { display:inline-flex; align-items:center; gap:6px; height:36px; padding:0 11px; border:1px solid #dfe7e1; border-radius:9px; background:#fff; color:#5c6d64; font-size:12px; font-weight:650; }
+.new-game-header { display:inline-flex; align-items:center; gap:8px; min-height:48px; padding:0 16px; border:1px solid #dfe7e1; border-radius:10px; background:#fff; color:#5c6d64; font-size:14px; font-weight:800; }
+.new-game-header svg { font-size:16px; }
 .battle-actions { grid-template-columns:repeat(4, minmax(0, 1fr)); }
 .battle-actions .recommendation-toggle.active { background:#123f70; border-color:#123f70; color:#fff; box-shadow:0 2px 8px #123f7038; }
 .battle-actions .recommendation-toggle.active .thinking-spinner { border-color:#6e8eaf; border-top-color:#fff; }
@@ -43,7 +44,7 @@
 .battle-shell { display:flex; flex-direction:column; width:min(100%, calc(100dvh - 230px)); height:100dvh; min-height:0; max-width:none; overflow:hidden; box-sizing:border-box; margin:0 auto; }.battle-header { order:1; }.match-card { order:2; }.battle-actions { order:3; }.board-wrap { order:4; flex:1 1 auto; align-self:stretch; width:100%; max-width:none; min-width:0; min-height:0; overflow:visible; aspect-ratio:auto; display:grid; place-items:center; box-sizing:border-box; margin:0; padding:0; background:transparent; border-radius:0; box-shadow:none; }.board-grid { width:100%; height:auto; max-width:100%; aspect-ratio:1 / 1; }.dialog-backdrop,.battle-toast { order:6; }
 .battle-header h1 { display:flex; align-items:center; gap:7px; font-family:Georgia, 'Times New Roman', serif; letter-spacing:.04em; }.battle-header h1 .logo-mark { width:28px; height:28px; flex:none; }
 .turn-mark.thinking { opacity:1; border:2px solid #9eb1bd; border-top-color:#1d5c96; background:transparent; width:12px; height:12px; animation:easygo-spin .75s linear infinite; }
-.battle-actions button { min-height:48px; }.header-tools { min-height:44px; }
+.battle-actions button { min-height:48px; }.header-tools { min-height:48px; }
 @media (max-width:430px) { .board-wrap { width:100%; margin-left:0; margin-right:0; padding-inline:8px; } }
 .dialog-options button { min-height:44px; }.dialog-title button { min-width:44px; min-height:44px; }
 .new-game-dialog .dialog-options button:disabled { opacity:.45; cursor:not-allowed; }
@@ -394,4 +395,176 @@
   color: #b3261e;
   font-size: 12px;
   margin: 0;
+}
+
+/* Home page: Easy-Go wood theme, layout follows the m3n homepage. */
+.home-shell {
+  min-height: 100dvh;
+  background: #f5f7f4;
+  color: #1e2b26;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.home-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 58px;
+  padding: 0 22px;
+  border-bottom: 1px solid #e4ebe6;
+  background: #fbfcfa;
+}
+.home-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #5a2f0f;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+}
+.home-brand .logo-mark {
+  width: 30px;
+  height: 30px;
+}
+.home-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  max-width: 980px;
+  min-height: calc(100vh - 59px);
+  margin: 0 auto;
+  padding: 48px 24px 60px;
+  text-align: center;
+  box-sizing: border-box;
+}
+.eyebrow {
+  color: #8c6036;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.home-logo-wrap {
+  margin-top: 22px;
+}
+.home-logo {
+  width: 92px;
+  height: 92px;
+  filter: drop-shadow(0 12px 20px rgba(116, 80, 45, 0.3));
+}
+.home-hero h1 {
+  margin: 16px 0 0;
+  color: #5a2f0f;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(2.4rem, 6vw, 4.4rem);
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+}
+.home-hero > p {
+  max-width: 660px;
+  margin: 16px 0 0;
+  color: #5c6d64;
+  font-size: 1.05rem;
+  line-height: 1.75;
+}
+.home-features {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  width: 100%;
+  margin-top: 36px;
+}
+.home-features section {
+  border: 1px solid #e4ebe6;
+  border-radius: 14px;
+  background: #fff;
+  padding: 20px 18px;
+  text-align: left;
+  box-shadow: 0 7px 20px rgba(36, 55, 45, 0.05);
+}
+.home-features svg {
+  color: #b4824c;
+  font-size: 1.4rem;
+}
+.home-features h2 {
+  margin: 10px 0 0;
+  color: #5a2f0f;
+  font-size: 1.05rem;
+}
+.home-features p {
+  margin: 8px 0 0;
+  color: #62696c;
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+.home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 36px;
+}
+.home-actions .primary-link,
+.home-actions .secondary-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 10px 22px;
+  border: 1px solid #b4824c;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+}
+.home-actions .primary-link {
+  background: #5a2f0f;
+  border-color: #3f2009;
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(90, 47, 15, 0.28);
+}
+.home-actions .primary-link:hover {
+  background: #6f3c15;
+}
+.home-actions .secondary-link {
+  background: #fff;
+  color: #5a2f0f;
+}
+.home-actions .secondary-link:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+@media (max-width: 720px) {
+  .home-features {
+    grid-template-columns: 1fr;
+  }
+  .home-hero {
+    padding: 40px 18px 48px;
+  }
+}
+
+/* Battle header: HOME button replaces the old logo text. */
+.home-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 16px;
+  border: 1px solid #b4824c;
+  border-radius: 10px;
+  background: #e9bd7f;
+  color: #3f2009;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+}
+.home-button svg { font-size: 16px; }
+.home-button:hover {
+  background: #dfad68;
 }

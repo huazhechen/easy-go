@@ -34,7 +34,9 @@ the small KataGo test model exists at `public/models/katago-small.bin.gz`.
 | Command | Purpose |
 | --- | --- |
 | `npm run dev` | Start the Vite dev server with COOP/COEP headers. |
-| `npm test` | Run the Vitest suite. |
+| `npm test` | Run the fast Vitest suite (basic cases; model/search cases are tagged `perf` and skipped). |
+| `npm run test:perf` | Run the performance cases (KataGo model load + MCTS search/benchmark). |
+| `npm run test:all` | Run the entire Vitest suite. |
 | `npm run test:typecheck` | Type-check the tests. |
 | `npm run lint` | Run ESLint. |
 | `npm run build` | Type-check and build the production app. |

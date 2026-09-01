@@ -6,6 +6,13 @@ export const KATAGO_RECOMMENDED_MODEL_URL =
 
 export const KATAGO_SMALL_MODEL_PATH = 'models/katago-small.bin.gz';
 
+/**
+ * Fixed per-move thinking time used for self-play. Self-play always runs the
+ * bundled B10 model and does not expose the per-tier slider, so this keeps the
+ * two-player pace constant instead of following the selected tier.
+ */
+export const SELFPLAY_THINKING_MS = 2000;
+
 // The three locally-hosted model tiers. B6 is the tiny bundled test network
 // (3.7 MB gzipped), B10 is a 10-block 128-channel net (~11 MB gzipped), and
 // B18 is the recommended b18c384nbt network (~96 MB gzipped).

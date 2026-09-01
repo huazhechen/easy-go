@@ -18,6 +18,7 @@ import {
   isAnalysisCanceled,
   isContinuousAnalysisCurrent,
   nextContinuousAnalysisVisits,
+  OWNERSHIP_REFRESH_INTERVAL_MS,
   resolveAnalysisRequest,
   sleep,
   type AnalysisRequestOptions,
@@ -117,7 +118,8 @@ export function toggleContinuousAnalysis(get: AnalysisGetter, set: AnalysisSette
           reuseTree: true,
           reportEveryMs: 0,
           propagateErrors: true,
-          ownershipRefreshIntervalMs: state.settings.katagoOwnershipMode === 'tree' ? 500 : undefined,
+          ownershipRefreshIntervalMs:
+            state.settings.katagoOwnershipMode === 'tree' ? OWNERSHIP_REFRESH_INTERVAL_MS : undefined,
         });
       } catch (err) {
         if (!isAnalysisCanceled(err)) {
@@ -135,7 +137,7 @@ export function toggleContinuousAnalysis(get: AnalysisGetter, set: AnalysisSette
       // visit/time ceilings.
       if (node.analysis?.moves?.length) {
         const prevState = continuousEarlyStopByNodeId.get(node.id) ?? createMctsEarlyStopState();
-        const check = checkMctsEarlyStop(prevState, node.analysis);
+        const check = checkMctsEarlyStop(prevState, node.analysis, getBoardSizeFromBoard(node.gameState.board));
         continuousEarlyStopByNodeId.set(node.id, check.nextState);
       }
       const settled = continuousEarlyStopByNodeId.get(node.id)?.settled === true;

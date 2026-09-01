@@ -1,13 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Easy Go">
-  <defs>
-    <clipPath id="logo-loop-clip">
-      <circle cx="12.5" cy="24" r="11"/>
-    </clipPath>
-  </defs>
   <rect width="48" height="48" rx="9" fill="#e9bd7f"/>
-  <circle cx="24" cy="12.5" r="11" fill="#111715"/>
-  <circle cx="35.5" cy="24" r="11" fill="#f8fafc"/>
-  <circle cx="24" cy="35.5" r="11" fill="#111715"/>
-  <circle cx="12.5" cy="24" r="11" fill="#f8fafc"/>
-  <circle cx="24" cy="12.5" r="11" fill="#111715" clip-path="url(#logo-loop-clip)"/>
+  <path d="M 24 10.877 A 9.5 9.5 0 1 0 24 21.123 A 9.5 9.5 0 0 1 24 10.877 Z" fill="#111715"/>
+  <path d="M 26.877 24 A 9.5 9.5 0 1 1 37.123 24 A 9.5 9.5 0 0 0 26.877 24 Z" fill="#f8fafc"/>
+  <path d="M 24 26.877 A 9.5 9.5 0 1 1 24 37.123 A 9.5 9.5 0 0 0 24 26.877 Z" fill="#111715"/>
+  <path d="M 10.877 24 A 9.5 9.5 0 1 0 21.123 24 A 9.5 9.5 0 0 1 10.877 24 Z" fill="#f8fafc"/>
 </svg>

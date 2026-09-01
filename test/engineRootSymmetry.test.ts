@@ -1,10 +1,15 @@
+/**
+ * Model/search cases that load the KataGo harness and run MCTS; excluded from
+ * the default test run (see `npm run test:perf`).
+ * @module-tag perf
+ */
 import { describe, expect, it } from 'vitest';
 import { emptyBoard, hasModel, loadHarnessModel } from './helpers/engineHarness';
+import { MctsSearch } from '../src/engine/katago/analyzeMcts';
 import {
-  MctsSearch,
   computeValidRootSymmetries,
   markSymmetryDuplicateMoves,
-} from '../src/engine/katago/analyzeMcts';
+} from '../src/engine/katago/symmetry';
 import { BOARD_AREA, BOARD_SIZE, PASS_MOVE, setBoardSize } from '../src/engine/katago/fastBoard';
 import type { RecentMove } from '../src/engine/katago/featuresV7Fast';
 
