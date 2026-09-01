@@ -45,9 +45,9 @@ export function HomePage() {
           <Link to="/battle" className="primary-link">
             <FaPlay aria-hidden="true" />开始对战
           </Link>
-          <button type="button" className="secondary-link" disabled>
-            练习 · 即将上线
-          </button>
+          <Link to="/practice" className="secondary-link">
+            <FaHistory aria-hidden="true" />练习题库
+          </Link>
           <button type="button" className="secondary-link" disabled>
             复盘 · 即将上线
           </button>

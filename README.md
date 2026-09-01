@@ -15,6 +15,10 @@ work off the main thread in a Web Worker, and needs no analysis server.
 - Live win rate, top-move recommendation hints that keep improving while you
   play, undo, pass, and an instant territory score judgment (temporary or
   locked-on) that renders from a cheap network-only read without a search.
+- A local practice library built from the bundled Go data: browse a tree of
+  life-and-death collections, famous/hikaru games, and Kogo's joseki
+  dictionary, then use decomposition, attempt, or reversal modes. Practice
+  boards crop to the relevant region and restrict KataGo to that region.
 - The strongest B18 model downloads in the background with progress, is cached
   in IndexedDB, and is verified by MD5 before it is used.
 

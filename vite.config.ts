@@ -88,7 +88,7 @@ export default defineConfig({
     },
   },
   test: {
-    exclude: [...configDefaults.exclude, '**/.external/**'],
+    exclude: [...configDefaults.exclude, '**/.external/**', '**/tmp/**'],
     tags: [
       {
         name: 'perf',

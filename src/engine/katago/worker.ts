@@ -55,6 +55,7 @@ interface SearchKey {
   positionKey: string | null;
   modelUrl: string;
   boardSize: number;
+  interestMaskKey: string;
   maxChildren: number;
   ownershipMode: OwnershipMode;
   komi: number;
@@ -76,6 +77,7 @@ let latestQuickEvalId = 0;
 function makeSearchKey(args: {
   msg: KataGoAnalyzeRequest;
   boardSize: number;
+  interestMaskKey: string;
   maxChildren: number;
   ownershipMode: OwnershipMode;
   wideRootNoise: number;
@@ -91,6 +93,7 @@ function makeSearchKey(args: {
     positionKey: args.msg.positionKey ?? null,
     modelUrl: args.msg.modelUrl,
     boardSize: args.boardSize,
+    interestMaskKey: args.interestMaskKey,
     maxChildren: args.maxChildren,
     ownershipMode: args.ownershipMode,
     komi: args.msg.komi,
@@ -416,6 +419,10 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
     const maxTimeMs = Math.max(25, Math.min(msg.maxTimeMs ?? 800, ENGINE_MAX_TIME_MS));
     const batchSize = Math.max(1, Math.min(msg.batchSize ?? (tf.getBackend() === 'webgpu' ? 16 : 4), 64));
     const maxChildren = Math.max(4, Math.min(msg.maxChildren ?? 64, BOARD_AREA));
+    const interestMaskKey = msg.allowedMoves ? msg.allowedMoves.join(',') : '';
+    const interestMask = msg.allowedMoves
+      ? new Uint8Array(BOARD_AREA).map((_, index) => (msg.allowedMoves![index] ? 1 : 0))
+      : undefined;
     const topK = Math.max(1, Math.min(msg.topK ?? 10, 50));
     const includeMovesOwnership = msg.includeMovesOwnership === true;
     const ownershipMode: OwnershipMode = includeMovesOwnership ? 'tree' : (msg.ownershipMode ?? 'root');
@@ -444,6 +451,7 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
       searchKey.positionKey === (msg.positionKey ?? null) &&
       searchKey.modelUrl === msg.modelUrl &&
       searchKey.boardSize === boardSize &&
+      searchKey.interestMaskKey === interestMaskKey &&
       searchKey.maxChildren === maxChildren &&
       searchKey.ownershipMode === ownershipMode &&
       searchKey.komi === msg.komi &&
@@ -471,6 +479,7 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
         searchKey.positionId === msg.parentPositionId &&
         searchKey.positionKey === (msg.parentPositionKey ?? null) &&
         searchKey.modelUrl === msg.modelUrl &&
+        searchKey.interestMaskKey === interestMaskKey &&
         searchKey.maxChildren === maxChildren &&
         searchKey.ownershipMode === ownershipMode &&
         searchKey.komi === msg.komi &&
@@ -502,6 +511,7 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
             searchKey = makeSearchKey({
               msg,
               boardSize,
+              interestMaskKey,
               maxChildren,
               ownershipMode,
               wideRootNoise,
@@ -535,11 +545,13 @@ async function handleMessage(msg: KataGoWorkerRequest): Promise<void> {
         rootPolicyTemperature,
         fillDameBeforePass,
         rootSymmetrySamples,
+        interestMask,
       });
       if (typeof msg.positionId === 'string') {
         searchKey = makeSearchKey({
           msg,
           boardSize,
+          interestMaskKey,
           maxChildren,
           ownershipMode,
           wideRootNoise,

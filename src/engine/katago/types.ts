@@ -48,6 +48,12 @@ export interface KataGoAnalyzeRequest {
   ownershipRefreshIntervalMs?: number;
   reuseTree?: boolean;
   ownershipMode?: 'root' | 'tree';
+  /**
+   * Root move mask in board coordinates, one entry per `board.length * board.length`.
+   * Only these intersections are expanded by the search. Passing stays available
+   * as a candidate but callers such as the practice module can ignore it.
+   */
+  allowedMoves?: number[];
 }
 
 /**

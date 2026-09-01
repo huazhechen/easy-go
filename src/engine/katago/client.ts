@@ -211,6 +211,7 @@ class KataGoEngineClient {
     ownershipMode?: 'root' | 'tree';
     rootPolicyTemperature?: number;
     fillDameBeforePass?: boolean;
+    allowedMoves?: number[];
     onProgress?: (analysis: Analysis) => void;
   }): Promise<Analysis> {
     this.rejectIfCrashed();
@@ -247,6 +248,7 @@ class KataGoEngineClient {
       ownershipMode: args.ownershipMode,
       rootPolicyTemperature: args.rootPolicyTemperature,
       fillDameBeforePass: args.fillDameBeforePass,
+      allowedMoves: args.allowedMoves,
     };
     const promise = new Promise<Analysis>((resolve, reject) => {
       this.pending.set(id, { resolve, reject, onProgress: args.onProgress });

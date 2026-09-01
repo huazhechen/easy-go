@@ -222,10 +222,14 @@ function buildRootMoveMask(args: {
   moveHistory: RecentMove[];
   currentPlayer: Player;
   symmetryPruning?: boolean;
+  /** External interest-area mask; gets intersected with every other root mask. */
+  interestMask?: Uint8Array;
   /** KataGo ignorePreRootHistory: with it on, symmetry is a matter of stones alone. */
   ignorePreRootHistory?: boolean;
 }): { allowedMoves: Uint8Array | null; rootSymmetries: number[] } {
-  let allowedMoves: Uint8Array | null = null;
+  let allowedMoves: Uint8Array | null = args.interestMask
+    ? new Uint8Array(args.interestMask)
+    : null;
 
   // KataGo rootPruneUselessMoves: once the opponent has passed four times running,
   // stop considering moves inside either side's pass-alive area. Those only prolong
@@ -455,6 +459,8 @@ async function buildRootEval(args: {
   rootMoves: RecentMove[];
   maxChildren: number;
   rootSymmetryPruning?: boolean;
+  /** Optional external root move mask, used by practice/interest-area searches. */
+  interestMask?: Uint8Array;
   outputScaleMultiplier: number;
   /** KataGo ignorePreRootHistory: the root's history planes stay empty. */
   ignorePreRootHistory: boolean;
@@ -530,6 +536,7 @@ async function buildRootEval(args: {
     moveHistory: args.rootMoves,
     currentPlayer: args.currentPlayer,
     symmetryPruning: args.rootSymmetryPruning,
+    interestMask: args.interestMask,
     ignorePreRootHistory: args.ignorePreRootHistory,
   });
   const rootPolicy = new Float32Array(BOARD_AREA + 1);
@@ -2836,6 +2843,7 @@ export class MctsSearch {
   readonly conservativePass: boolean;
   readonly wideRootNoise: number;
   readonly rootSymmetrySamples: number;
+  readonly rootInterestMask: Uint8Array | null;
   private readonly outputScaleMultiplier: number;
 
   private rootStones: Uint8Array<ArrayBuffer>;
@@ -2923,6 +2931,7 @@ export class MctsSearch {
     conservativePass: boolean;
     wideRootNoise: number;
     rootSymmetrySamples: number;
+    rootInterestMask: Uint8Array | null;
     rootStones: Uint8Array<ArrayBuffer>;
     rootKoPoint: number;
     rootPrevStones: Uint8Array<ArrayBuffer>;
@@ -2966,6 +2975,7 @@ export class MctsSearch {
     this.conservativePass = args.conservativePass;
     this.wideRootNoise = args.wideRootNoise;
     this.rootSymmetrySamples = args.rootSymmetrySamples;
+    this.rootInterestMask = args.rootInterestMask;
 
     this.rootStones = args.rootStones;
     this.rootKoPoint = args.rootKoPoint;
@@ -3117,6 +3127,8 @@ export class MctsSearch {
     wideRootNoise: number;
     rootSymmetrySamples?: number;
     rootSymmetryPruning?: boolean;
+    /** Optional external root move mask (one entry per board point). */
+    interestMask?: Uint8Array;
     /**
      * KataGo ignorePreRootHistory. Defaults to true, as it does for KataGo's
      * analysis engine (Setup::DEFAULT_ANALYSIS_IGNORE_PRE_ROOT_HISTORY).
@@ -3216,6 +3228,7 @@ export class MctsSearch {
       rootMoves,
       maxChildren: args.maxChildren,
       rootSymmetryPruning: args.rootSymmetryPruning,
+      interestMask: args.interestMask,
       outputScaleMultiplier,
       ignorePreRootHistory,
       enablePassingHacks,
@@ -3257,6 +3270,7 @@ export class MctsSearch {
       conservativePass: args.conservativePass,
       wideRootNoise: args.wideRootNoise,
       rootSymmetrySamples,
+      rootInterestMask: args.interestMask ?? null,
       rootStones,
       rootKoPoint,
       rootPrevStones,
@@ -3363,6 +3377,7 @@ export class MctsSearch {
       rootMoves,
       maxChildren: this.maxChildren,
       outputScaleMultiplier: this.outputScaleMultiplier,
+      interestMask: this.rootInterestMask ?? undefined,
       ignorePreRootHistory: this.ignorePreRootHistory,
       enablePassingHacks: this.enablePassingHacks,
       rootPolicyTemperature: this.effectiveRootPolicyTemperature(rootMoves.length),
